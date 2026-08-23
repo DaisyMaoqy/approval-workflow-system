@@ -135,7 +135,7 @@
 	showClear={hasClearableFilter && visible.length > 0}
 	onclear={resetFilters}
 />
-{visible}
+
 <RequestList
 	requests={visible}
 	{keyword}

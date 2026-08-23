@@ -1,5 +1,5 @@
 import { getContext, setContext } from 'svelte';
-import { IDENTITY_BY_ROLE, requireUser } from '$lib/domain/org';
+import { IDENTITY_BY_ROLE, requireUser, loadUserInfo } from '$lib/domain/org';
 import type { Role, User } from '$lib/domain/types';
 
 /**
@@ -15,6 +15,7 @@ import type { Role, User } from '$lib/domain/types';
  */
 
 const STORAGE_KEY = 'identity-role';
+const USER_INFO_KEY = 'user-info';
 const VALID_ROLES: Set<string> = new Set(['employee', 'manager', 'finance']);
 
 function loadRole(): Role {
@@ -36,7 +37,13 @@ export class IdentityState {
 	/** 当前角色对应的登录人 */
 	get user(): User {
 		// console.log('user getter called', this.role);
-		return requireUser(IDENTITY_BY_ROLE[this.role]);
+		try {
+			const userInfo = loadUserInfo()
+			return userInfo || requireUser(IDENTITY_BY_ROLE[this.role]);
+		} catch {
+			return requireUser(IDENTITY_BY_ROLE[this.role]);
+		}
+		
 	}
 
 	get isManager(): boolean {
@@ -46,6 +53,11 @@ export class IdentityState {
 	/** 当前身份是否为财务审批人（二级审批） */
 	get isFinance(): boolean {
 		return this.role === 'finance';
+	}
+
+	saveUserInfo(info: User): void {
+		// console.log('saveUserInfo', info);
+		localStorage.setItem(USER_INFO_KEY, JSON.stringify(info));
 	}
 
 	switchTo(role: Role): void {

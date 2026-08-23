@@ -79,6 +79,7 @@ export const USERS = [
  */
 export type KnownUserId = (typeof USERS)[number]['id'];
 
+// 用模拟用户
 const USER_BY_ID = new Map<UserId, User>(USERS.map((u) => [u.id, u]));
 
 /** 演示的两个身份：切角色即切登录人，员工用'张三' */
@@ -105,5 +106,14 @@ export function findUser(id: UserId): User | undefined {
 export function requireUser(id: UserId): User {
 	const user = USER_BY_ID.get(id);
 	if (!user) throw new Error(`未知用户：${id}`);
+	return user;
+}
+
+/** 从本地存储加载用户信息 */
+export function loadUserInfo(): User | null {
+	if (typeof localStorage === 'undefined') return null;
+	const userInfo = localStorage.getItem('user-info');
+	if (!userInfo) return null;
+	const user = JSON.parse(userInfo);
 	return user;
 }
