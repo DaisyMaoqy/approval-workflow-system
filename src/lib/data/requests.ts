@@ -116,7 +116,6 @@ export async function loadRequests(type?: ApplicationType): Promise<void> {
 		);
 		const data = Array.isArray(payload) ? payload : payload.list;
 		const sorted = [...data].sort(byUpdatedDesc);
-
 		if (type) {
 			// 按类型拉取：并入统一 store（按 id 去重），保留其它类型数据。
 			requestsStore.update((list) => {
@@ -128,7 +127,8 @@ export async function loadRequests(type?: ApplicationType): Promise<void> {
 			requestsStore.set(sorted);
 		}
 		writeStorage(get(requestsStore));
-	} catch {
+	} catch (error) {
+		console.error('loadRequests failed', error instanceof Error ? error.message : '获取失败，请稍后重试');
 		// 超时 / 网络 / 业务错误：降级到缓存 / seed，保证页面永远有数据
 		requestsStore.set(readStorage() ?? (seed as unknown as Request[]));
 	}

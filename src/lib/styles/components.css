@@ -233,4 +233,100 @@
 	.amount-summary strong {
 		@apply font-medium text-slate-900;
 	}
+
+	/* ===== 登录页（src/lib/components/common/LoginCard.svelte） =====
+	   深色玻璃拟态整页，仅登录场景使用；按「页面级样式语义化」约定收口到此。
+	   自定义令牌（brand / brand-2 / ink）见 tokens.css 的 @theme。 */
+	.login-page {
+		@apply relative min-h-screen overflow-hidden bg-ink text-white;
+	}
+	.login-page__glow {
+		@apply pointer-events-none absolute rounded-full;
+	}
+	.login-page__glow--brand {
+		@apply -top-32 -right-24 h-96 w-96 bg-brand/40 blur-[120px];
+	}
+	.login-page__glow--brand-2 {
+		@apply -bottom-40 -left-20 h-[30rem] w-[30rem] bg-brand-2/30 blur-[130px];
+	}
+	.login-page__stage {
+		@apply relative z-10 flex min-h-screen items-center justify-center px-4 py-10;
+	}
+	.login-page__card-wrap {
+		@apply w-full max-w-md;
+	}
+
+	.login-card {
+		@apply rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl;
+	}
+	.login-card__brand {
+		@apply mb-8 flex flex-col items-center text-center;
+	}
+	.login-card__logo {
+		@apply mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-xl font-bold tracking-wide;
+	}
+	.login-card__title {
+		@apply text-xl font-semibold;
+	}
+	.login-card__subtitle {
+		@apply mt-1 text-sm text-white/50;
+	}
+
+	.login-form {
+		@apply space-y-5;
+	}
+	.login-alert {
+		@apply rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300;
+	}
+
+	/* 字段分组容器：仅作语义包裹，无额外样式 */
+	.login-field {
+		@apply flex flex-col gap-1.5;
+	}
+	.login-field__label {
+		@apply text-sm text-white/70;
+	}
+	.login-field__control {
+		@apply relative;
+	}
+	.login-field__icon {
+		@apply pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-white/30;
+	}
+	.login-field__toggle {
+		@apply absolute top-1/2 right-3 -translate-y-1/2 text-white/40 transition hover:text-white/70;
+	}
+
+	.login-input {
+		@apply w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 text-white placeholder-white/30 transition outline-none;
+	}
+	.login-input--toggle {
+		@apply pr-10;
+	}
+	.login-input--brand:focus {
+		@apply border-brand ring-2 ring-brand/40;
+	}
+	.login-input--brand-2:focus {
+		@apply border-brand-2 ring-2 ring-brand-2/40;
+	}
+
+	.login-options {
+		@apply flex items-center justify-between text-sm;
+	}
+	.login-remember {
+		@apply flex cursor-pointer items-center gap-2 text-white/70;
+	}
+	.login-checkbox {
+		@apply h-4 w-4 rounded border-white/20 bg-white/5 accent-brand;
+	}
+
+	.login-submit {
+		@apply flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand to-brand-2 py-2.5 font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60;
+	}
+	.login-spinner {
+		@apply h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white;
+	}
+
+	.login-copyright {
+		@apply mt-6 text-center text-xs text-white/40;
+	}
 }
