@@ -85,20 +85,3 @@
 		</div>
 	</div>
 {/if}
-
-<style>
-	.reports__type-select {
-		height: 2.25rem;
-		padding: 0 0.5rem;
-		border: 1px solid var(--color-slate-300);
-		border-radius: var(--radius-md);
-		background: var(--color-white);
-		font-size: 0.875rem;
-	}
-	.notice-card__actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.75rem;
-	}
-</style>
