@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { ApplicationType, RequestStatus } from '$lib/domain/types';
 	import type { Request } from '$lib/domain/types';
+	import { USE_BACKEND } from '$lib/core/http';
+	import { loadDashboard } from '$lib/data/reports';
 	import {
 		statusDistribution,
 		monthlyApplicationTrend,
@@ -13,6 +15,8 @@
 		CHART_COLORS,
 		computeDateRange,
 		filterByDateRange,
+		mapBackendDashboard,
+		type BackendDashboard,
 		type DatePreset
 	} from '$lib/domain/dashboard';
 	import Panel from '$lib/components/common/Panel.svelte';
@@ -41,6 +45,39 @@
 	let selectedMonth = $state<string | null>(null);
 	let showDateFilter = $state(false);
 
+	// ---- 后端看板（GET /aws/v1/reports/dashboard） ----
+	// 后端仅支持 type/year/month/department，不支持状态/请假类型/自定义日期区间，
+	// 故仅在「无本地筛选」时走后端聚合；一旦用户加了本地筛选，回退客户端聚合。
+	let backendData = $state<BackendDashboard | null>(null);
+
+	const hasLocalFilters = $derived(
+		preset !== 'all' ||
+			!!selectedStatus ||
+			!!selectedLeaveType ||
+			!!selectedMonth ||
+			!!customStart ||
+			!!customEnd
+	);
+	const useBackend = $derived(USE_BACKEND && !hasLocalFilters);
+
+	// 联调：无本地筛选时用后端聚合；否则清空，交回本地聚合（含交互筛选）
+	$effect(() => {
+		if (!useBackend) {
+			backendData = null;
+			return;
+		}
+		const currentType = type;
+		void loadDashboard({ type: currentType })
+			.then((d) => {
+				if (useBackend) backendData = d;
+			})
+			.catch(() => {
+				backendData = null;
+			});
+	});
+
+	const backend = $derived(backendData ? mapBackendDashboard(backendData, isLeave) : null);
+
 	function resetDateFilter(): void {
 		preset = 'all';
 		customStart = '';
@@ -66,8 +103,13 @@
 
 	// ---- 筛选 & 排序 ----
 	const dateFiltered = $derived(filterByDateRange(requests, dateRange));
+	// 顶部「全部/差旅/请假」视图筛选：看板所有聚合与明细表都以 typeFiltered 为基准，
+	// 保证切换视图时图表与列表实时跟着变（此前漏了这层，导致切视图图表不动）。
+	const typeFiltered = $derived(
+		type === 'all' ? dateFiltered : dateFiltered.filter((r) => r.type === type)
+	);
 	const finalFiltered = $derived.by(() => {
-		let result = dateFiltered;
+		let result = typeFiltered;
 		if (selectedStatus) {
 			result = result.filter((r) => r.status === selectedStatus);
 		}
@@ -94,13 +136,13 @@
 		`${preset}:${selectedStatus ?? ''}:${selectedLeaveType ?? ''}:${selectedMonth ?? ''}:${customStart}:${customEnd}`
 	);
 
-	// ---- 图表聚合（仅对日期筛选后的数据做聚合） ----
-	const overview = $derived(managerOverview(dateFiltered));
-	const leave = $derived(leaveOverview(dateFiltered));
+	// ---- 图表聚合（仅对日期+类型筛选后的数据做聚合，作为后端不可用时的兜底） ----
+	const overview = $derived(backend ? backend.overview : managerOverview(typeFiltered));
+	const leave = $derived(backend ? backend.leave : leaveOverview(typeFiltered));
 
 	// 状态分布（差旅视图用饼图、请假视图用环形图，共用同一份聚合）
-	const statusSlices = $derived(
-		statusDistribution(dateFiltered).map((s) => ({
+	const localStatusSlices = $derived(
+		statusDistribution(typeFiltered).map((s) => ({
 			name: s.name,
 			value: s.value,
 			key: s.status,
@@ -108,8 +150,8 @@
 		}))
 	);
 	// 请假类型分布（请假视图用横向条形图，与状态环形图形成形状对比）
-	const leaveTypeSlices = $derived(
-		leaveTypeDistribution(dateFiltered).map((s) => ({
+	const localLeaveTypeSlices = $derived(
+		leaveTypeDistribution(typeFiltered).map((s) => ({
 			name: s.name,
 			value: s.count,
 			key: s.value,
@@ -117,12 +159,34 @@
 		}))
 	);
 
-	// 趋势：请假视图看「请假天数」，其余看「申请量」
-	const trend = $derived(
-		isLeave ? monthlyLeaveDays(dateFiltered) : monthlyApplicationTrend(dateFiltered)
+	// 状态分布：后端数据时补上 key/color（图表与点击交互需要），否则用本地聚合
+	const statusSlices = $derived(
+		backend
+			? backend.statusSlices.map((s) => ({
+					name: s.name,
+					value: s.value,
+					key: s.status,
+					color: STATUS_COLORS[s.status]
+				}))
+			: localStatusSlices
 	);
-	const trendName = $derived(isLeave ? '请假天数' : '申请量');
-	const trendUnit = $derived(isLeave ? '天' : '单');
+	const leaveTypeSlices = $derived(
+		backend
+			? backend.leaveTypeSlices.map((s) => ({
+					name: s.name,
+					value: s.count,
+					key: s.value,
+					color: LEAVE_TYPE_COLORS[s.value] ?? CHART_COLORS[0]
+				}))
+			: localLeaveTypeSlices
+	);
+
+	// 趋势：后端数据为「申请量（单）」口径；本地模式保留请假视图「天数」语义
+	const trend = $derived(
+		backend ? backend.trend : isLeave ? monthlyLeaveDays(typeFiltered) : monthlyApplicationTrend(typeFiltered)
+	);
+	const trendName = $derived(backend ? backend.trendName : isLeave ? '请假天数' : '申请量');
+	const trendUnit = $derived(backend ? backend.trendUnit : isLeave ? '天' : '单');
 
 	// ---- 图表点击交互（子组件回传分类名，这里按维度筛选下方申请记录） ----
 	function handleStatusSelect(name: string): void {

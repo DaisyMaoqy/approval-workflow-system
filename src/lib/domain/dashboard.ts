@@ -250,3 +250,67 @@ export function filterByDateRange(requests: readonly Request[], range: DateRange
 		return t >= startTime && t <= endTime;
 	});
 }
+
+/**
+ * 后端 GET /aws/v1/reports/dashboard 的响应结构（与 qy-core-server 对齐）。
+ * 注意：后端按「全员/团队」口径聚合，不返回明细记录，也不支持状态/请假类型/
+ * 自定义日期区间等前端本地筛选维度。
+ */
+export interface BackendDashboard {
+	statusDistribution: { name: string; value: number }[];
+	monthlyTrend: { month: string; value: number; unit: string }[];
+	totals: { count: number; budgetCents: number; leaveDays: number };
+	leaveTypeDistribution?: { name: string; value: number }[];
+}
+
+/** 把后端聚合结果映射成 ManagerDashboard 既有的本地聚合输出形状 */
+export interface MappedDashboard {
+	overview: ManagerOverview;
+	leave: LeaveOverview;
+	statusSlices: StatusSlice[];
+	leaveTypeSlices: CategorySlice[];
+	trend: MonthlyPoint[];
+	trendName: string;
+	trendUnit: string;
+}
+
+/**
+ * 将后端看板响应转换为与本地聚合同构的输出，使 ManagerDashboard 可无缝切换数据源。
+ * 后端月度趋势恒为「申请量（单）」，故 trendName/Unit 统一为申请量口径
+ * （请假视图不再展示「请假天数」趋势，以后端口径为准）。
+ */
+export function mapBackendDashboard(resp: BackendDashboard, isLeave: boolean): MappedDashboard {
+	const byStatus = new Map(resp.statusDistribution.map((s) => [s.name, s.value]));
+	const statusSlices: StatusSlice[] = STATUS_ORDER.filter((s) => byStatus.has(s)).map((s) => ({
+		status: s,
+		name: STATUS_LABELS[s],
+		value: byStatus.get(s)!
+	}));
+
+	const pending = PENDING_STATUSES.reduce((sum, s) => sum + (byStatus.get(s) ?? 0), 0);
+	const approved = byStatus.get('approved') ?? 0;
+	const rejected = byStatus.get('rejected') ?? 0;
+	const decided = approved + rejected;
+	const overview: ManagerOverview = {
+		total: resp.totals.count,
+		pending,
+		passRate: decided ? approved / decided : 0
+	};
+
+	const lt = resp.leaveTypeDistribution ?? [];
+	const leaveTypeSlices: CategorySlice[] = LEAVE_TYPE_OPTIONS.map((o) => {
+		const found = lt.find((x) => x.name === o.value);
+		return { value: o.value, name: o.label, count: found?.value ?? 0 };
+	}).filter((s) => s.count > 0);
+	const leaveCount = lt.reduce((sum, x) => sum + x.value, 0);
+	const leave: LeaveOverview = {
+		count: leaveCount,
+		totalDays: resp.totals.leaveDays,
+		avgDays: leaveCount ? resp.totals.leaveDays / leaveCount : 0
+	};
+
+	const trend: MonthlyPoint[] = resp.monthlyTrend.map((p) => ({ month: p.month, amount: p.value }));
+	const trendUnit = resp.monthlyTrend[0]?.unit ?? '单';
+
+	return { overview, leave, statusSlices, leaveTypeSlices, trend, trendName: '申请量', trendUnit };
+}
