@@ -51,9 +51,11 @@
 			// 保存 Qy_token，供后续请求以 Authorization: Bearer <Qy_token> 携带
 			auth.setToken(token);
 
-			// [占位] 后续联调：用后端返回的 user 替换演示身份（含真实 id/name/department/managerId）；
-			// 当前先按 role 切换演示身份，保持现有页面可用。
-			if (data.user) {
+			// 联调：以令牌拉取当前登录人（GET /aws/v1/users/me）。
+			// 后端就绪即返回真实 id/name/department/managerId/role，覆盖演示身份；
+			// 若后端尚未实现该接口（或网络失败），回退到登录响应里的 user 字段。
+			const me = await identity.loadCurrentUser();
+			if (!me && data.user) {
 				identity.saveUserInfo(data.user as User);
 				identity.switchTo(data.user.role as Role);
 			}
