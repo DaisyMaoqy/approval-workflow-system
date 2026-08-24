@@ -109,6 +109,8 @@ export interface Request {
 	type: ApplicationType;
 	applicantId: UserId;
 	applicantName: string;
+	/** 申请人角色；后端联调时随单返回（后端 UUID 无法在本地组织表反查），本地模式退化为 findUser 反查 */
+	applicantRole?: Role;
 	department: string;
 	status: RequestStatus;
 	/** ISO */

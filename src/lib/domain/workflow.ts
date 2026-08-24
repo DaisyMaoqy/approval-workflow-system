@@ -174,9 +174,11 @@ export function availableActions(request: Request, actor: User): AuditAction[] {
  */
 export function canViewRequest(request: Request, viewer: User): boolean {
 	if (request.applicantId === viewer.id) return true;
-	const applicant = findUser(request.applicantId);
+	// 后端联调时申请人是后端 UUID，本地组织表查不到，用随单返回的 applicantRole；
+	// 本地模式（demo）退化为 findUser 反查。
+	const applicantRole = request.applicantRole ?? findUser(request.applicantId)?.role;
 	if (viewer.role === 'manager') {
-		return applicant?.role === 'employee' && request.status !== 'draft';
+		return applicantRole === 'employee' && request.status !== 'draft';
 	}
 	if (viewer.role === 'finance') {
 		return request.status === 'pending_finance';
