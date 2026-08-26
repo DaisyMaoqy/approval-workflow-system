@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import tailwindcss from '@tailwindcss/vite';
+import tailwindcss from '@tailwindcss/vite'; // 处理所有 Tailwind 语法
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
@@ -10,7 +10,7 @@ export default defineConfig({
 			'^/aws': {
 				target: 'http://localhost:3000', // 后端服务器地址
 				changeOrigin: true,
-				rewrite: (path) => path.replace(/^/, ''),
+				// rewrite: (path) => path.replace(/^/, ''),
 				// secure: false, // 如果目标服务器是 HTTPS 但证书无效，设置为 false
         		// ws: true, // 支持 WebSocket
 			}
