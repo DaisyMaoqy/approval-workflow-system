@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { StatusFilter } from '$lib/data/requests';
+import type { StatusFilter } from '$lib/domain/types';
 
 /**
  * 「我的申请」列表的筛选条件（状态 / 关键字 / 年 / 月）共享状态。

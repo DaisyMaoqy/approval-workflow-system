@@ -138,3 +138,32 @@ export interface TravelFields {
 
 /** 差旅申请：通用单的特化，便于既有差旅组件以强类型读取 `request.fields` */
 export type TravelRequest = Request & { fields: TravelFields };
+
+/**
+ * 列表筛选维度。
+ *
+ * - `'all'`：不限制状态
+ * - `'pending'`：审批中，即 `pending_manager` + `pending_finance` 两个状态的合集
+ * - 其余为单一 {@link RequestStatus}
+ */
+export type StatusFilter = 'all' | RequestStatus | 'pending';
+
+/**
+ * `GET /requests` 的查询维度（对照 `backend/docs/API-ALIGNMENT.md §2.5 / §2.6`）。
+ * 全部可选；`all` / 空串 / `undefined` 视为「不限制该维度」。
+ */
+export interface RequestQuery {
+	type?: ApplicationType;
+	status?: StatusFilter;
+	keyword?: string;
+	year?: number | 'all';
+	month?: number | 'all';
+	applicantId?: string;
+	department?: string;
+	/** `mine` = 当前用户发起；`todo` = 当前用户待处理（角色由 token 决定） */
+	scope?: 'all' | 'mine' | 'todo';
+	sort?: 'updated' | 'submitted';
+	page?: number;
+	pageSize?: number;
+}
+

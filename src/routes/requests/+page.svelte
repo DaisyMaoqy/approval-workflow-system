@@ -13,12 +13,13 @@
 		filterByStatus,
 		filterByType,
 		getRequestsByApplicant,
+		loadRequests,
 		requestsStore,
 		searchRequests,
 		sortBySubmittedAtDesc,
-		type StatusFilter
+		USE_BACKEND
 	} from '$lib/data/requests';
-	import { type ApplicationType } from '$lib/domain/types';
+	import { type ApplicationType, type StatusFilter } from '$lib/domain/types';
 	import { firstStep } from '$lib/domain/wizard';
 
 	const identity = useIdentity();
@@ -66,6 +67,23 @@
 	const mine = $derived(
 		sortBySubmittedAtDesc(getRequestsByApplicant(identity.user.id, $requestsStore))
 	);
+
+	// 联调：筛选参数下沉后端。后端就绪时，任一筛选维度变化都重新拉取
+	// `GET /aws/v1/requests?scope=mine&status=&year=&month=&keyword=&type=...`，
+	// 由服务端过滤；scope=mine 由 token 解析当前用户，无需传 applicantId。
+	// 后端不可用 / 报错时 loadRequests 降级到缓存或 seed，下面本地 filterBy* 仍兜底，
+	// 两层语义一致，UI 表现不变。
+	$effect(() => {
+		if (!USE_BACKEND) return;
+		void loadRequests(typeFilter === 'all' ? undefined : typeFilter, {
+			status: activeFilter,
+			year,
+			month,
+			keyword: keyword.trim() || undefined,
+			scope: 'mine',
+			sort: 'submitted'
+		});
+	});
 	const years = $derived(distinctYears(mine));
 	// 维度正交：状态 → 类型 → 年/月 → 关键字，叠加生效
 	const visible = $derived(

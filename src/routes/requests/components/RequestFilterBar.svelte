@@ -3,7 +3,7 @@
 	import SearchInput from '$lib/components/form/SearchInput.svelte';
 	import UnitSelect from '$lib/components/form/UnitSelect.svelte';
 	import Icon from '$lib/components/common/Icon.svelte';
-	import type { StatusFilter } from '$lib/data/requests';
+	import type { StatusFilter } from '$lib/domain/types';
 	import {
 		APPLICATION_TYPE_VALUES,
 		APPLICATION_TYPE_LABELS,

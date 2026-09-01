@@ -5,10 +5,11 @@ import type {
 	AuditAction,
 	Budget,
 	Request,
-	RequestStatus,
+	StatusFilter,
 	TravelFields,
 	User,
-	UserId
+	UserId,
+	RequestQuery,
 } from '$lib/domain/types';
 import { APPLICATION_TYPES, LEAVE_TYPE_OPTIONS } from '$lib/domain/applicationTypes';
 import { budgetTotal, formatYuan } from '$lib/domain/money';
@@ -17,6 +18,7 @@ import type { TripLeg } from '$lib/domain/types';
 import { writable, get } from 'svelte/store';
 import { toLocalISO } from '$lib/format/date';
 import { apiGet, apiPost, apiPut, apiDelete, USE_BACKEND } from '$lib/core/http';
+export { USE_BACKEND };
 
 // —— 联调说明（对照 backend/docs/API-ALIGNMENT.md §7）——
 // 以下「写操作」对外暴露两套实现：
@@ -105,18 +107,52 @@ export function sortBySubmittedAtDesc(requests: readonly Request[]): Request[] {
  * 保留其它类型，避免「待我审批 / 报表全量」等跨类型视图被一次单类型请求清空；
  * 不带 type 的启动调用则整体替换（与缓存策略一致）。
  */
-export async function loadRequests(type?: ApplicationType): Promise<void> {
+
+/**
+ * 启动加载 / 按筛选刷新：`GET /aws/v1/requests`（联调）或 `GET /api/requests`（Mock）。
+ *
+ * 联调模式下，除 `type` 外的其余筛选维度（status / keyword / year / month /
+ * applicantId / department / scope / sort）也随查询串下沉到后端，由服务端过滤；
+ * 后端不可用或报错时降级到缓存 / seed，前端本地过滤（filterBy* / searchRequests）仍兜底，
+ * 两层语义一致。Mock 模式只认 `type`（其余维度本地过滤）。
+ *
+ * `type` 存在时把结果**并入**统一 store（按 id 去重，保留其它类型）；
+ * 不带 `type`（如 scope=mine / scope=todo）时整体替换 store。
+ */
+export async function loadRequests(
+	type?: ApplicationType,
+	extra?: Partial<RequestQuery>
+): Promise<void> {
 	// 联调模式走 /aws/v1/requests，否则沿用原 Mock 的 /api/requests
 	const path = USE_BACKEND ? '/requests' : '/api/requests';
+
+	// 组合查询参数：仅 USE_BACKEND 时把筛选维度下沉到后端；
+	// Mock 模式只认 type（其余维度由前端本地过滤兜底）。
+	const query: Record<string, string | number | undefined> = {};
+	const merged: RequestQuery = { ...(type ? { type } : {}), ...extra };
+	const hasType = Boolean(merged.type);
+	if (USE_BACKEND) {
+		if (hasType) query.type = merged.type;
+		if (merged.status && merged.status !== 'all') query.status = merged.status;
+		if (merged.keyword && merged.keyword.trim() !== '') query.keyword = merged.keyword.trim();
+		if (merged.year && merged.year !== 'all') query.year = merged.year;
+		if (merged.month && merged.month !== 'all') query.month = merged.month;
+		if (merged.applicantId) query.applicantId = merged.applicantId;
+		if (merged.department) query.department = merged.department;
+		if (merged.scope && merged.scope !== 'all') query.scope = merged.scope;
+		if (merged.sort) query.sort = merged.sort;
+		if (merged.page) query.page = merged.page;
+		if (merged.pageSize) query.pageSize = merged.pageSize;
+	} else if (hasType) {
+		query.type = merged.type;
+	}
+
 	try {
 		// 客户端已处理 base / 鉴权头 / 信封拆包；这里兼容「数组」与「分页包」
-		const payload = await apiGet<Request[] | { list: Request[] }>(
-			path,
-			type ? { type } : undefined
-		);
+		const payload = await apiGet<Request[] | { list: Request[] }>(path, query);
 		const data = Array.isArray(payload) ? payload : payload.list;
 		const sorted = [...data].sort(byUpdatedDesc);
-		if (type) {
+		if (hasType) {
 			// 按类型拉取：并入统一 store（按 id 去重），保留其它类型数据。
 			requestsStore.update((list) => {
 				const byId = new Map(list.map((r) => [r.id, r]));
@@ -570,4 +606,37 @@ export async function applyAction(
 	if (!result.ok) throw new Error(result.message);
 	updateRequest(result.request);
 	return result.request;
+}
+
+/**
+ * 批量状态流转（联调入口，取代审批页逐条 `applyAction` 的写法）。
+ * 后端：`POST /aws/v1/requests/batch` `{ action: approve|reject|cancel, ids: string[], comment? }`。
+ * 成功返回后以服务端为准重新拉取列表（回写本地 store，含其它类型）；
+ * 后端不可用或抛错时降级到本地逐条 `transition`，保证页面始终可用。
+ *
+ * 仅受理 approve / reject / cancel（与契约 `BatchActionDto` 一致；submit / reedit 不在批量范围内）。
+ */
+export async function batchAction(
+	action: Exclude<AuditAction, 'submit' | 'reedit'>,
+	ids: string[],
+	actor: User,
+	comment?: string
+): Promise<void> {
+	if (ids.length === 0) return;
+	if (USE_BACKEND) {
+		try {
+			await apiPost('/requests/batch', { action, ids, comment });
+			// 以服务端为权威刷新工作数据集，列表 / 待办随订阅自动更新
+			await loadRequests();
+			return;
+		} catch {
+			// 降级：后端不可用时走本地状态机
+		}
+	}
+	for (const id of ids) {
+		const req = getRequestById(id);
+		if (!req) continue;
+		const result = transition({ request: req, action, actor, comment });
+		if (result.ok) updateRequest(result.request);
+	}
 }
