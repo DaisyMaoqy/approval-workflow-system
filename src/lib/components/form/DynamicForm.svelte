@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { FieldDef } from '$lib/domain/applicationTypes';
+	import type { ApplicationType } from '$lib/domain/types';
 	import DynamicField from './DynamicField.svelte';
 	import GroupField from './GroupField.svelte';
 	import RepeatableField from './RepeatableField.svelte';
@@ -12,6 +13,7 @@
 		touched?: Record<string, boolean>;
 		attempted?: boolean;
 		markTouched?: (path: string) => void;
+		type?: ApplicationType;
 	}
 
 	let {
@@ -21,7 +23,8 @@
 		onPatch,
 		touched = {},
 		attempted = false,
-		markTouched = () => {}
+		markTouched = () => {},
+		type,
 	}: Props = $props();
 </script>
 
@@ -56,6 +59,7 @@
 				{touched}
 				{attempted}
 				{markTouched}
+				{type}
 			/>
 		{/if}
 	{/each}

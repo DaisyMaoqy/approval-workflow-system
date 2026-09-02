@@ -127,6 +127,7 @@
 			{touched}
 			{attempted}
 			{markTouched}
+			{type}
 			onPatch={(k, v) => draft.update((d) => ({ ...d, [k]: v }))}
 		/>
 	{/if}

@@ -167,3 +167,10 @@ export interface RequestQuery {
 	pageSize?: number;
 }
 
+/** 一键AI润色 */
+export interface PolishResponse {
+    success: boolean;
+    polished: string;
+    error?: string;
+}
+

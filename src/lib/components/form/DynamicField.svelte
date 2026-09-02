@@ -1,8 +1,10 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import type { FieldDef } from '$lib/domain/applicationTypes';
+	import type { ApplicationType } from '$lib/domain/types';
 	import Field from './Field.svelte';
 	import { centsToYuan, parseYuanInput } from '$lib/domain/money';
+	import { polishText } from '$lib/data/requests';
 
 	interface Props {
 		field: FieldDef;
@@ -17,6 +19,9 @@
 		/** 标记某字段路径已被用户交互过 */
 		markTouched?: (path: string) => void;
 		children?: Snippet;
+		isPolishing?: boolean;
+		isEnough?: boolean;
+		type?: ApplicationType;
 	}
 
 	let {
@@ -28,7 +33,10 @@
 		touched = {},
 		attempted = false,
 		markTouched = () => {},
-		children
+		children,
+		isPolishing = false,
+		isEnough = false,
+		type,
 	}: Props = $props();
 
 	// 统一接口：每个渲染器都拿到「当前作用域的值对象」与「写入某 key 的回调」。
@@ -81,6 +89,7 @@
 		const cents = scopeValue[field.key];
 		if (moneyInput && document.activeElement === moneyInput) return;
 		moneyText = cents == null ? '' : String(centsToYuan(cents as number));
+		updateIsEnough();
 	});
 	function onMoneyInput(event: Event) {
 		const text = (event.currentTarget as HTMLInputElement).value;
@@ -89,6 +98,61 @@
 		scopePatch(field.key, cents ?? undefined);
 		touch();
 	}
+
+	async function aiPolish() {
+		const curValue = scopeValue[field.key] as string;
+		isPolishing = true;
+
+		if (!curValue || !curValue.trim()) {
+			alert('请先输入需要润色的内容');
+			isPolishing = false;
+			return;
+		}
+		if (!type) {
+			alert('该字段暂不支持 AI 润色');
+			isPolishing = false;
+			return;
+		}
+
+		try {
+			/** ai/polish  post polishText
+			 *  申请类型 
+			 *  type: string;
+			 *   待润色的申请内容 
+			 *  content: string;
+			*/
+			const res = await polishText({
+				type,
+				content: curValue
+			});
+			
+			if (!res?.success) {
+				alert(res?.error || '润色失败，请稍后重试');
+				return;
+			}
+			// 更新值
+			const polishedContent = res?.polished || curValue;
+			scopePatch(field.key, polishedContent);
+			touch();
+			
+		} catch (error) {
+			console.error('润色失败:', error);
+			alert(`润色失败: ${error}`);
+		} finally {
+			isPolishing = false;
+		}
+	}
+	// 更新字段长度是否满足要求
+	function updateIsEnough() {
+		if (field.kind === 'textarea') {
+			const _value = scopeValue[field.key] as string;
+			if (_value && (_value.length < 10 || _value.length > 200)) isEnough = false;
+			else isEnough = true;
+		}
+	}
+		// 渲染时判断
+		updateIsEnough()
+	})
 </script>
 
 {#if field.kind === 'text' || field.kind === 'textarea'}
@@ -101,9 +165,24 @@
 				value={String(value ?? '')}
 				oninput={(e) => {
 					scopePatch(field.key, e.currentTarget.value);
+					if (e.currentTarget.value.length < 10 || e.currentTarget.value.length > 200) isEnough = false;
+					else isEnough = true;
 					touch();
 				}}
+				disabled={isPolishing}
 				onblur={touch}></textarea>
+			<button
+				type="button"
+				class="w-25 btn btn--primary"
+				onclick={aiPolish}
+				disabled={isPolishing || !isEnough}
+			>
+				{#if isPolishing}
+					润色中...
+				{:else}
+					一键润色
+				{/if}
+			</button>
 		{:else}
 			<input
 				class="input"

@@ -10,6 +10,7 @@ import type {
 	User,
 	UserId,
 	RequestQuery,
+	PolishResponse
 } from '$lib/domain/types';
 import { APPLICATION_TYPES, LEAVE_TYPE_OPTIONS } from '$lib/domain/applicationTypes';
 import { budgetTotal, formatYuan } from '$lib/domain/money';
@@ -32,15 +33,6 @@ export { USE_BACKEND };
 
 // 统一请求客户端（src/lib/core/http.ts）已持有联调开关 USE_BACKEND、base 解析、
 // 请求/响应拦截与错误处理。此处不再重复实现，仅消费客户端返回的数组/分页包。
-
-/**
- * 列表筛选维度。
- *
- * - `'all'`：不限制状态
- * - `'pending'`：审批中，即 `pending_manager` + `pending_finance` 两个状态的合集
- * - 其余为单一 {@link RequestStatus}
- */
-export type StatusFilter = 'all' | RequestStatus | 'pending';
 
 /**
  * 申请单数据源（演示用）。
@@ -535,6 +527,25 @@ export async function saveDraftRequest(
 	const local = createDraft(type, fields, applicant);
 	addRequest(local);
 	return local;
+}
+
+/**
+ * 一键AI润色
+ * @param type 
+ * @param content 
+ * @returns 
+ */
+export async function polishText({type, content}: {type: ApplicationType, content: string}): Promise<PolishResponse> {
+	if (USE_BACKEND) {
+		try {
+			const polished = await apiPost<PolishResponse>(`/ai/polish`, { type, content });
+			return polished;
+		} catch {
+			// 降级：返回原始内容
+			return { success: false, polished: content };
+		}
+	}
+	return { success: false, polished: content };
 }
 
 /**
