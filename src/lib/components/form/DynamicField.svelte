@@ -101,6 +101,12 @@
 
 	async function aiPolish() {
 		const curValue = scopeValue[field.key] as string;
+		// 验证内容有效性
+		const validation = isValidContent(curValue);
+        if (!validation.valid) {
+            alert(validation.reason || '请输入有效的申请内容');
+            return;
+        }
 		isPolishing = true;
 
 		if (!curValue || !curValue.trim()) {
@@ -148,8 +154,55 @@
 			const _value = scopeValue[field.key] as string;
 			if (_value && (_value.length < 10 || _value.length > 200)) isEnough = false;
 			else isEnough = true;
+
+			if (isEnough) {
+				isValidContent(_value);
+			}
 		}
 	}
+
+	// 检查文本是否有效
+    function isValidContent(text: string): { valid: boolean; reason?: string } {
+        const trimmed = text.trim();
+        
+        // 1. 空内容检查
+        if (!trimmed) {
+            return { valid: false, reason: '内容不能为空' };
+        }
+        
+        // 2. 长度检查
+        // if (trimmed.length < 10) {
+        //     return { valid: false, reason: '内容太短，至少10个字符' };
+        // }
+        
+        // if (trimmed.length > 200) {
+        //     return { valid: false, reason: '内容太长，最多200个字符' };
+        // }
+        
+        // 3. 检查是否包含有效的中文字符或英文单词
+        const hasChinese = /[\u4e00-\u9fa5]/.test(trimmed);
+        const hasEnglish = /[a-zA-Z]/.test(trimmed);
+        if (!hasChinese && !hasEnglish) {
+            return { valid: false, reason: '内容似乎不是有效的文本' };
+        }
+        
+        // 4. 检查是否全是特殊字符
+        const hasValidChar = /[\u4e00-\u9fa5a-zA-Z0-9]/.test(trimmed);
+        if (!hasValidChar) {
+            return { valid: false, reason: '内容包含无效字符' };
+        }
+        
+        // 5. 检查是否是乱码（连续特殊字符太多）
+        const specialChars = trimmed.match(/[^a-zA-Z\u4e00-\u9fa5\s]/g)?.length || 0;
+        const totalChars = trimmed.length;
+        if (specialChars / totalChars > 0.5) {
+            return { valid: false, reason: '内容包含过多特殊字符，请重新输入' };
+        }
+        
+        return { valid: true };
+    }
+
+	onMount(() => {
 		// 渲染时判断
 		updateIsEnough()
 	})
