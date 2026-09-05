@@ -150,8 +150,9 @@
 	}
 	// 更新字段长度是否满足要求
 	function updateIsEnough() {
+		const _value = scopeValue[field.key] as string;
+		if (!_value) return;
 		if (field.kind === 'textarea') {
-			const _value = scopeValue[field.key] as string;
 			if (_value && (_value.length < 10 || _value.length > 200)) isEnough = false;
 			else isEnough = true;
 
@@ -224,18 +225,20 @@
 				}}
 				disabled={isPolishing}
 				onblur={touch}></textarea>
-			<button
-				type="button"
-				class="w-25 btn btn--primary"
-				onclick={aiPolish}
-				disabled={isPolishing || !isEnough}
-			>
-				{#if isPolishing}
-					润色中...
-				{:else}
-					一键润色
-				{/if}
-			</button>
+			{#if field.key == `reason`}
+				<button
+					type="button"
+					class="w-25 btn btn--primary"
+					onclick={aiPolish}
+					disabled={isPolishing || !isEnough}
+				>
+					{#if isPolishing}
+						润色中...
+					{:else}
+						一键润色
+					{/if}
+				</button>
+			{/if}
 		{:else}
 			<input
 				class="input"
