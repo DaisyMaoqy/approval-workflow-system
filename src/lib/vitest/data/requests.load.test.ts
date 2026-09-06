@@ -5,7 +5,13 @@ import seed from '$lib/data/seed.json' with { type: 'json' };
 
 // loadRequests 是全仓唯一的异步/网络逻辑，此前零测试。这里 mock 掉 `fetch` 与
 // `PUBLIC_MOCK_BASE_URL`，把三条降级路径（成功 / !res.ok / 网络错误 / 无 base）逐一覆盖。
-vi.mock('$env/static/public', () => ({ PUBLIC_MOCK_BASE_URL: 'https://mock.test' }));
+// 注意：USE_BACKEND 由 PUBLIC_USE_BACKEND 驱动，这里固定为 'true' 以保留原「联调态」
+// 的信封拆包行为（mock 的响应是 {code,msg,data} 信封），聚焦验证 loadRequests 的
+// 拉取 / 降级 / 并入 store 逻辑本身。
+vi.mock('$env/static/public', () => ({
+	PUBLIC_MOCK_BASE_URL: 'https://mock.test',
+	PUBLIC_USE_BACKEND: 'true'
+}));
 
 const SEED = seed as unknown as Request[];
 
