@@ -19,6 +19,7 @@
 		sortBySubmittedAtDesc,
 		USE_BACKEND
 	} from '$lib/data/requests';
+	import { fetchUserRequests } from '$lib/data/users';
 	import { type ApplicationType, type StatusFilter } from '$lib/domain/types';
 	import { firstStep } from '$lib/domain/wizard';
 
@@ -68,21 +69,28 @@
 		sortBySubmittedAtDesc(getRequestsByApplicant(identity.user.id, $requestsStore))
 	);
 
-	// 联调：筛选参数下沉后端。后端就绪时，任一筛选维度变化都重新拉取
-	// `GET /aws/v1/requests?scope=mine&status=&year=&month=&keyword=&type=...`，
-	// 由服务端过滤；scope=mine 由 token 解析当前用户，无需传 applicantId。
-	// 后端不可用 / 报错时 loadRequests 降级到缓存或 seed，下面本地 filterBy* 仍兜底，
-	// 两层语义一致，UI 表现不变。
+	// 联调：后端态下「我的申请」改用 `GET /users/:id/requests`（联调端点 #3）按当前用户取数，
+	// 不再走跨类型的 `scope=mine`；该端点只返回当前用户的全部申请，status/year/month/
+	// keyword/type 等维度由下方本地 filterBy* 层叠加过滤（与本地态行为一致）。
+	// 若 /users/:id/requests 未实现或报错，兜底回 `GET /requests?scope=mine`（原行为，
+	// 服务端按 token 解析当前用户并支持各筛选维度），UI 表现不变。
 	$effect(() => {
 		if (!USE_BACKEND) return;
-		void loadRequests(typeFilter === 'all' ? undefined : typeFilter, {
-			status: activeFilter,
-			year,
-			month,
-			keyword: keyword.trim() || undefined,
-			scope: 'mine',
-			sort: 'submitted'
-		});
+		const id = identity.user.id;
+		void (async () => {
+			try {
+				requestsStore.set(await fetchUserRequests(id));
+			} catch {
+				await loadRequests(typeFilter === 'all' ? undefined : typeFilter, {
+					status: activeFilter,
+					year,
+					month,
+					keyword: keyword.trim() || undefined,
+					scope: 'mine',
+					sort: 'submitted'
+				});
+			}
+		})();
 	});
 	const years = $derived(distinctYears(mine));
 	// 维度正交：状态 → 类型 → 年/月 → 关键字，叠加生效
