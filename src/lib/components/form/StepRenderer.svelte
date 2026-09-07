@@ -111,6 +111,7 @@
 			appType.switchTo(type);
 			await goto(resolve('/requests'));
 		} catch {
+			alert(`提交申请失败，请联系管理员`);
 			submitting = false;
 		}
 	}

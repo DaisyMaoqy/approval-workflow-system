@@ -497,7 +497,9 @@ export async function submitNewRequest(
 			const submitted = await apiPost<Request>(`${resourcePath(type)}/${created.id}/submit`, {});
 			addRequest(submitted);
 			return submitted;
-		} catch {
+		} catch (error) {
+			console.error('提交申请失败，原始错误:', error);
+			throw error;
 			// 降级：后端不可用时走本地兜底
 		}
 	}
