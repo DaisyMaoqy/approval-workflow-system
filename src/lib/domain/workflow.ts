@@ -8,7 +8,7 @@ import type {
 	User
 } from './types';
 import { findUser } from './org';
-import { toLocalISO } from '$lib/format/date';
+import { toChinaISO } from '$lib/format/date';
 
 /**
  * 审批状态机。
@@ -259,8 +259,8 @@ export function transition({
 		};
 	}
 
-	// 用户动作产生的时间戳按本地墙钟存储（toLocalISO），保证「提交时间」等展示与用户所在时区一致。
-	const at = toLocalISO(now);
+	// 用户动作产生的时间戳按中国时区（UTC+8）存储（toChinaISO），与后端输出 +08:00 一致。
+	const at = toChinaISO(now);
 	const entry: AuditEntry = {
 		id: auditId ?? `audit-${request.audit.length + 1}-${at}`,
 		at,

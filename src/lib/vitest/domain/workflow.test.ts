@@ -10,7 +10,7 @@ import {
 	REJECT_COMMENT_MAX_LENGTH,
 	transition
 } from '../../domain/workflow';
-import { toLocalISO } from '../../format/date';
+import { toChinaISO } from '../../format/date';
 
 const zhangsan = requireUser(EMPLOYEE_ID);
 const lijingli = requireUser(MANAGER_ID);
@@ -355,7 +355,7 @@ describe('transition — 留痕与不可变性', () => {
 		expect(result.ok && result.request.audit).toEqual([
 			{
 				id: 'audit-fixed',
-				at: toLocalISO(NOW),
+				at: toChinaISO(NOW),
 				actorId: zhangsan.id,
 				actorName: zhangsan.name,
 				action: 'submit',
@@ -381,7 +381,7 @@ describe('transition — 留痕与不可变性', () => {
 			now: NOW
 		});
 
-		expect(result.ok && result.request.submittedAt).toBe(toLocalISO(NOW));
+		expect(result.ok && result.request.submittedAt).toBe(toChinaISO(NOW));
 	});
 
 	it('驳回后重新提交以最新提交时间为准', () => {
@@ -393,7 +393,7 @@ describe('transition — 留痕与不可变性', () => {
 			now: NOW
 		});
 
-		expect(result.ok && result.request.submittedAt).toBe(toLocalISO(NOW));
+		expect(result.ok && result.request.submittedAt).toBe(toChinaISO(NOW));
 	});
 });
 

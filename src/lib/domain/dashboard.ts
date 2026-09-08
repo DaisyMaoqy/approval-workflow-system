@@ -2,6 +2,11 @@ import type { RequestStatus, Request } from './types';
 import { PENDING_STATUSES } from './types';
 import { STATUS_LABELS } from './workflow';
 import { LEAVE_TYPE_OPTIONS } from './applicationTypes';
+import {
+	CHINA_OFFSET_MS,
+	chinaMonthKey,
+	chinaNowMonthKey
+} from '$lib/format/date';
 
 /**
  * 统计报表聚合层（纯函数，与 UI 解耦，便于将来补单测）。
@@ -120,14 +125,15 @@ export function leaveOverview(requests: readonly Request[]): LeaveOverview {
 	};
 }
 
-/** 生成近 months 个月（含当月）的月份桶，缺失月份补 0，供各类月度趋势复用 */
+/** 生成近 months 个月（含当月）的中国年月桶，缺失月份补 0，供各类月度趋势复用 */
 function buildMonthBuckets(months: number): MonthlyPoint[] {
-	const now = new Date();
+	// 以当前中国时间的年月为右端，避免依赖运行环境时区（getMonth 会随机器时区变化）
+	const [nowYear, nowMonth] = chinaNowMonthKey().split('-').map(Number);
 	const buckets: MonthlyPoint[] = [];
 	for (let i = months - 1; i >= 0; i--) {
-		const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+		const d = new Date(Date.UTC(nowYear, nowMonth - 1 - i, 1));
 		buckets.push({
-			month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+			month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
 			amount: 0
 		});
 	}
@@ -142,9 +148,8 @@ export function monthlyApplicationTrend(requests: readonly Request[], months = 1
 	const buckets = buildMonthBuckets(months);
 	const indexByMonth = new Map(buckets.map((b, i) => [b.month, i]));
 	for (const r of requests) {
-		const d = new Date(r.createdAt);
-		const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-		const i = indexByMonth.get(key);
+		// 时间戳字面量本身即中国时间，直接截取年月，零时区换算
+		const i = indexByMonth.get(chinaMonthKey(r.createdAt));
 		if (i !== undefined) buckets[i].amount += 1;
 	}
 	return buckets;
@@ -160,9 +165,8 @@ export function monthlyLeaveDays(requests: readonly Request[], months = 12): Mon
 	const indexByMonth = new Map(buckets.map((b, i) => [b.month, i]));
 	for (const r of requests) {
 		if (r.type !== 'leave') continue;
-		const d = new Date(r.createdAt);
-		const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-		const i = indexByMonth.get(key);
+		// 同上：按中国年月字面量归月
+		const i = indexByMonth.get(chinaMonthKey(r.createdAt));
 		if (i !== undefined) buckets[i].amount += leaveDays(r);
 	}
 	return buckets;
@@ -193,47 +197,60 @@ export interface DateRange {
 	end: Date;
 }
 
-/** 根据预设类型计算日期范围（end 含当天 23:59:59.999） */
+const CN = '+08:00';
+
+/** 取当前中国时间的墙钟分量（年/月/日），不依赖运行环境时区 */
+function chinaNowParts(): { y: number; m: number; d: number } {
+	const c = new Date(Date.now() + CHINA_OFFSET_MS);
+	return { y: c.getUTCFullYear(), m: c.getUTCMonth(), d: c.getUTCDate() };
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * 根据预设类型计算日期范围（end 含当天 23:59:59.999）。
+ *
+ * 边界一律按**中国时区**构造（`+08:00`）：`thisMonth/thisQuarter/thisYear` 的起点取中国
+ * 当月 / 当季 / 当年 1 号 0 点，终点取中国当天 23:59:59.999，与后端 `+08:00` 口径一致。
+ */
 export function computeDateRange(
 	preset: DatePreset,
 	customStart?: Date,
 	customEnd?: Date
 ): DateRange {
-	const now = new Date();
-	const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+	const { y, m, d } = chinaNowParts();
+	const end = new Date(`${y}-${pad2(m + 1)}-${pad2(d)}T23:59:59.999${CN}`);
 
 	switch (preset) {
 		case 'all': {
 			// 返回足够宽广的范围以包含全部历史数据
-			const start = new Date(2000, 0, 1);
+			const start = new Date(`2000-01-01T00:00:00.000${CN}`);
 			return { start, end };
 		}
 		case 'thisMonth': {
-			const start = new Date(now.getFullYear(), now.getMonth(), 1);
+			const start = new Date(`${y}-${pad2(m + 1)}-01T00:00:00.000${CN}`);
 			return { start, end };
 		}
 		case 'thisQuarter': {
-			const q = Math.floor(now.getMonth() / 3) * 3;
-			const start = new Date(now.getFullYear(), q, 1);
+			const q = Math.floor(m / 3) * 3;
+			const start = new Date(`${y}-${pad2(q + 1)}-01T00:00:00.000${CN}`);
 			return { start, end };
 		}
 		case 'thisYear': {
-			const start = new Date(now.getFullYear(), 0, 1);
+			const start = new Date(`${y}-01-01T00:00:00.000${CN}`);
 			return { start, end };
 		}
 		case 'custom':
 			if (customStart && customEnd) {
+				// 用 UTC 分量还原用户选择的日历日：`new Date('YYYY-MM-DD')` 解析结果即 UTC 零点，
+				// 用 getUTC* 读回的正是用户看到的那一天（不受运行环境时区影响）。
+				// 再按中国时区补到当日 00:00:00.000 / 23:59:59.999 —— 否则起始日在中国时间
+				// 00:00~08:00 之间的记录会被漏掉（数据是 +08:00 字面量）。
+				const sd = `${customStart.getUTCFullYear()}-${pad2(customStart.getUTCMonth() + 1)}-${pad2(customStart.getUTCDate())}`;
+				const ed = `${customEnd.getUTCFullYear()}-${pad2(customEnd.getUTCMonth() + 1)}-${pad2(customEnd.getUTCDate())}`;
 				return {
-					start: customStart,
-					end: new Date(
-						customEnd.getFullYear(),
-						customEnd.getMonth(),
-						customEnd.getDate(),
-						23,
-						59,
-						59,
-						999
-					)
+					start: new Date(`${sd}T00:00:00.000${CN}`),
+					end: new Date(`${ed}T23:59:59.999${CN}`)
 				};
 			}
 			// 未选择起止日期时展示全部数据

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { AuditEntry } from '$lib/domain/types';
 	import { ACTION_LABELS, STATUS_LABELS } from '$lib/domain/workflow';
+	// 时间格式化统一走 formatDateTime：时间戳字面量即中国时间（+08:00），直接截取即可
+	import { formatDateTime } from '$lib/format/date';
 
 	interface Props {
 		audit: AuditEntry[];
@@ -12,14 +14,10 @@
 	// 避免某条数据被手改过顺序后时间线倒挂。
 	const entries = $derived([...audit].sort((a, b) => a.at.localeCompare(b.at)));
 
-	/** ISO → `YYYY-MM-DD HH:mm`（UTC，与 seed 生成口径一致） */
-	function toDateTime(iso: string): string {
-		const d = new Date(iso);
-		const pad = (n: number) => String(n).padStart(2, '0');
-		return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(
-			d.getUTCHours()
-		)}:${pad(d.getUTCMinutes())}`;
-	}
+/** ISO → `YYYY-MM-DD HH:mm`（按中国时区字面量，与 formatDateTime 口径一致） */
+function toDateTime(iso: string): string {
+	return formatDateTime(iso);
+}
 </script>
 
 <ol class="timeline">
