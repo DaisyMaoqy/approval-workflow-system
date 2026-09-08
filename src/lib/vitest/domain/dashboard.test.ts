@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import seed from '../../data/seed.json' with { type: 'json' };
 import { MANAGER_ID } from '../../domain/org';
 import type { Request } from '../../domain/types';
@@ -27,6 +27,24 @@ const requests = seed as unknown as Request[];
 
 /** 研发部除主管（李经理）以外的员工申请，且排除草稿 === 页面 deptRequests 等价物 */
 const deptRequests = requests.filter((r) => r.applicantId !== MANAGER_ID && r.status !== 'draft');
+
+/**
+ * 冻结系统时钟到 seed 数据区间内（2025-09 ~ 2026-08）。
+ *
+ * dashboard.ts 的 buildMonthBuckets / computeDateRange 依赖 new Date() 取「当前月」，
+ * 而 seed 数据只覆盖到 2026-08。系统真实日期若落在 2026-09 之后，月度桶与「本月」区间会
+ * 滑出 seed 范围，导致 4 个依赖当前日期的用例不稳定（非确定性失败）。把时钟钉在 2026-08
+ * 可让默认 12 个月窗口恰好覆盖 2025-09~2026-08（等于 deptRequests 全量），且「本月」= 8 月
+ * 仍有数据，从而让这些用例与真实业务语义一致、可重复。
+ */
+beforeEach(() => {
+	vi.useFakeTimers();
+	vi.setSystemTime(new Date('2026-08-31T12:00:00'));
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 // ─── computeDateRange ────────────────────────────────────────────────
 
@@ -66,12 +84,13 @@ describe('computeDateRange', () => {
 		expect(range.start).toEqual(new Date(new Date().getFullYear(), 0, 1));
 	});
 
-	it('自定义区间：使用传入的起止日期，终点补到 23:59:59.999', () => {
+	it('自定义区间：起止按中国时区补到当日 00:00 / 23:59:59.999', () => {
 		const start = new Date('2026-03-01');
 		const end = new Date('2026-06-15');
 		const range = computeDateRange('custom', start, end);
 
-		expect(range.start).toEqual(start);
+		// 起点取用户所选那一天的中国 00:00（不是 UTC 零点，否则当天 00:00~08:00 的记录会被漏掉）
+		expect(range.start).toEqual(new Date('2026-03-01T00:00:00.000+08:00'));
 		expect(range.end).toEqual(new Date(2026, 5, 15, 23, 59, 59, 999));
 	});
 

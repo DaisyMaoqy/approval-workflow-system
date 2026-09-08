@@ -1,4 +1,4 @@
-import { PUBLIC_MOCK_BASE_URL } from '$env/static/public';
+import { PUBLIC_MOCK_BASE_URL, PUBLIC_USE_BACKEND } from '$env/static/public';
 
 /**
  * 统一请求客户端：请求拦截 + 响应拦截 + 错误处理。
@@ -10,16 +10,23 @@ import { PUBLIC_MOCK_BASE_URL } from '$env/static/public';
  * - 错误处理：网络/超时、HTTP 非 2xx（401 清 token 并跳登录）、业务码非 0，
  *   统一抛 {@link ApiError}，调用方按 `status`/`code` 精细处理。
  *
- * [占位] `USE_BACKEND` 置 `true` 即整体切到后端；与下方 base 解析同源。
- * 原有 Mock 演示逻辑不受影响：非联调模式下不做信封拆包，原样返回。
+ * `USE_BACKEND` 由环境变量 `PUBLIC_USE_BACKEND`（`'true'` 即开）驱动，见下方常量；
+ * 与下方 base 解析同源。开启时拆统一信封 `{ code, data, msg }`，关闭（Mock 态）原样返回。
  */
 
 const TOKEN_KEY = 'Qy_token';
 
-/** 数据开关：false=沿用 Apifox Mock；true=后端 /aws/v1。联调时改为 true。 */
-export const USE_BACKEND = true;
+/**
+ * 数据开关：false=沿用 Apifox Mock（仅 `/api/requests`，绝不拼 `/aws/v1`）；
+ * true=后端 `/aws/v1`。由环境变量 `PUBLIC_USE_BACKEND` 决定（`'true'` 即开），
+ * 见 `.env` / `.env.example`。无需改代码即可在「联调后端」与「Mock 演示」间切换。
+ */
+export const USE_BACKEND = PUBLIC_USE_BACKEND === 'true';
 const BACKEND_BASE = '/aws/v1';
 const MOCK_BASE = PUBLIC_MOCK_BASE_URL;
+
+// 全局跳转控制
+let isRedirecting = false;
 
 /** 统一错误类型，便于调用方区分网络 / HTTP / 业务错误 */
 export class ApiError extends Error {
@@ -64,9 +71,29 @@ function buildUrl(
 }
 
 function handleUnauthorized(): void {
+	if (isRedirecting) {
+		console.warn('正在跳转中，忽略重复 401');
+		return;
+	}
+		
+	// 如果已在登录页，直接抛出错误，不触发跳转
+	if (typeof location !== 'undefined' && location.pathname.includes('/login')) {
+		console.warn('已在登录页，不重复跳转');
+		throw new ApiError('登录已过期，请重新登录', 0, 'LOGINOUT');
+	}
+	
+	isRedirecting = true;
+	console.warn('执行 401 跳转');
 	// 清除登录态并跳登录页
-	if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_KEY);
-	if (typeof location !== 'undefined') location.href = '/login';
+	// if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_KEY);
+	// if (typeof location !== 'undefined') location.href = '/login';
+	
+	localStorage.removeItem(TOKEN_KEY);
+	location.href = '/login';
+	// 延迟重置标志
+	setTimeout(() => {
+		isRedirecting = false;
+	}, 2000);
 }
 
 export interface ApiRequestOptions {
@@ -100,6 +127,7 @@ async function apiRequest<T>(
 
 		// 响应拦截：HTTP 层错误
 		if (!res.ok) {
+			
 			if (res.status === 401 && !opts.suppressUnauthorizedRedirect) handleUnauthorized();
 			let detail = '';
 			try {
@@ -115,7 +143,10 @@ async function apiRequest<T>(
 		// 响应拦截：联调模式拆统一信封 { code, data, msg }
 		if (USE_BACKEND && json && typeof json === 'object') {
 			const env = json as { code?: unknown; msg?: string; data?: T };
-			if (env.code !== '200') {
+			if (env.code === '401') {
+				handleUnauthorized()
+				throw new ApiError('登录失效', 0, 'LOGINOUT');
+			} else if (env.code !== '200') {
 				throw new ApiError(
 					env.msg || '业务处理失败',
 					res.status,

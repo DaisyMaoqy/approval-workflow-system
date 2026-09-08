@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { ApplicationType, RequestStatus } from '$lib/domain/types';
 	import type { Request } from '$lib/domain/types';
+	import { USE_BACKEND } from '$lib/core/http';
+	import { loadDashboard } from '$lib/data/reports';
 	import {
 		statusDistribution,
 		monthlyApplicationTrend,
@@ -13,6 +15,8 @@
 		CHART_COLORS,
 		computeDateRange,
 		filterByDateRange,
+		mapBackendDashboard,
+		type BackendDashboard,
 		type DatePreset
 	} from '$lib/domain/dashboard';
 	import Panel from '$lib/components/common/Panel.svelte';
@@ -26,8 +30,14 @@
 	let {
 		requests,
 		/** 看板当前类型筛选；'leave' 时图表与卡片切换为请假语义指标 */
-		type = 'all'
-	}: { requests: readonly Request[]; type?: ApplicationType | 'all' } = $props();
+		type = 'all',
+		/** 当前主管所属部门：后端聚合按部门口径，须与本地 deptRequests 的部门过滤一致 */
+		department = ''
+	}: {
+		requests: readonly Request[];
+		type?: ApplicationType | 'all';
+		department?: string;
+	} = $props();
 
 	// 当前是否为请假视图：驱动图表/卡片/表头的差异化渲染
 	const isLeave = $derived(type === 'leave');
@@ -40,6 +50,42 @@
 	let selectedLeaveType = $state<string | null>(null);
 	let selectedMonth = $state<string | null>(null);
 	let showDateFilter = $state(false);
+
+	// ---- 后端看板（GET /aws/v1/reports/dashboard） ----
+	// 后端仅支持 type/year/month/department，不支持状态/请假类型/自定义日期区间，
+	// 故仅在「无本地筛选」时走后端聚合；一旦用户加了本地筛选，回退客户端聚合。
+	let backendData = $state<BackendDashboard | null>(null);
+
+	const hasLocalFilters = $derived(
+		preset !== 'all' ||
+			!!selectedStatus ||
+			!!selectedLeaveType ||
+			!!selectedMonth ||
+			!!customStart ||
+			!!customEnd
+	);
+	const useBackend = $derived(USE_BACKEND && !hasLocalFilters);
+
+	// 联调：无本地筛选时用后端聚合；否则清空，交回本地聚合（含交互筛选）
+	$effect(() => {
+		if (!useBackend) {
+			backendData = null;
+			return;
+		}
+		const currentType = type;
+		// 必须带上部门维度：后端 /reports/dashboard 按 department 聚合团队数据，
+		// 与本地 deptRequests 的部门过滤（含排除本人/草稿）口径一致，否则图表/卡片
+		// 会显示全部门数据，与下方「本部门申请记录」明细表对不上。
+		void loadDashboard({ type: currentType, department })
+			.then((d) => {
+				if (useBackend) backendData = d;
+			})
+			.catch(() => {
+				backendData = null;
+			});
+	});
+
+	const backend = $derived(backendData ? mapBackendDashboard(backendData, isLeave) : null);
 
 	function resetDateFilter(): void {
 		preset = 'all';
@@ -66,8 +112,13 @@
 
 	// ---- 筛选 & 排序 ----
 	const dateFiltered = $derived(filterByDateRange(requests, dateRange));
+	// 顶部「全部/差旅/请假」视图筛选：看板所有聚合与明细表都以 typeFiltered 为基准，
+	// 保证切换视图时图表与列表实时跟着变（此前漏了这层，导致切视图图表不动）。
+	const typeFiltered = $derived(
+		type === 'all' ? dateFiltered : dateFiltered.filter((r) => r.type === type)
+	);
 	const finalFiltered = $derived.by(() => {
-		let result = dateFiltered;
+		let result = typeFiltered;
 		if (selectedStatus) {
 			result = result.filter((r) => r.status === selectedStatus);
 		}
@@ -94,13 +145,13 @@
 		`${preset}:${selectedStatus ?? ''}:${selectedLeaveType ?? ''}:${selectedMonth ?? ''}:${customStart}:${customEnd}`
 	);
 
-	// ---- 图表聚合（仅对日期筛选后的数据做聚合） ----
-	const overview = $derived(managerOverview(dateFiltered));
-	const leave = $derived(leaveOverview(dateFiltered));
+	// ---- 图表聚合（仅对日期+类型筛选后的数据做聚合，作为后端不可用时的兜底） ----
+	const overview = $derived(backend ? backend.overview : managerOverview(typeFiltered));
+	const leave = $derived(backend ? backend.leave : leaveOverview(typeFiltered));
 
 	// 状态分布（差旅视图用饼图、请假视图用环形图，共用同一份聚合）
-	const statusSlices = $derived(
-		statusDistribution(dateFiltered).map((s) => ({
+	const localStatusSlices = $derived(
+		statusDistribution(typeFiltered).map((s) => ({
 			name: s.name,
 			value: s.value,
 			key: s.status,
@@ -108,8 +159,8 @@
 		}))
 	);
 	// 请假类型分布（请假视图用横向条形图，与状态环形图形成形状对比）
-	const leaveTypeSlices = $derived(
-		leaveTypeDistribution(dateFiltered).map((s) => ({
+	const localLeaveTypeSlices = $derived(
+		leaveTypeDistribution(typeFiltered).map((s) => ({
 			name: s.name,
 			value: s.count,
 			key: s.value,
@@ -117,12 +168,34 @@
 		}))
 	);
 
-	// 趋势：请假视图看「请假天数」，其余看「申请量」
-	const trend = $derived(
-		isLeave ? monthlyLeaveDays(dateFiltered) : monthlyApplicationTrend(dateFiltered)
+	// 状态分布：后端数据时补上 key/color（图表与点击交互需要），否则用本地聚合
+	const statusSlices = $derived(
+		backend
+			? backend.statusSlices.map((s) => ({
+					name: s.name,
+					value: s.value,
+					key: s.status,
+					color: STATUS_COLORS[s.status]
+				}))
+			: localStatusSlices
 	);
-	const trendName = $derived(isLeave ? '请假天数' : '申请量');
-	const trendUnit = $derived(isLeave ? '天' : '单');
+	const leaveTypeSlices = $derived(
+		backend
+			? backend.leaveTypeSlices.map((s) => ({
+					name: s.name,
+					value: s.count,
+					key: s.value,
+					color: LEAVE_TYPE_COLORS[s.value] ?? CHART_COLORS[0]
+				}))
+			: localLeaveTypeSlices
+	);
+
+	// 趋势：后端数据为「申请量（单）」口径；本地模式保留请假视图「天数」语义
+	const trend = $derived(
+		backend ? backend.trend : isLeave ? monthlyLeaveDays(typeFiltered) : monthlyApplicationTrend(typeFiltered)
+	);
+	const trendName = $derived(backend ? backend.trendName : isLeave ? '请假天数' : '申请量');
+	const trendUnit = $derived(backend ? backend.trendUnit : isLeave ? '天' : '单');
 
 	// ---- 图表点击交互（子组件回传分类名，这里按维度筛选下方申请记录） ----
 	function handleStatusSelect(name: string): void {
@@ -161,42 +234,46 @@
 	<StatCard label="通过率" value={`${(overview.passRate * 100).toFixed(1)}%`} />
 </div>
 
-<div class="grid">
-	{#if isLeave}
-		<Panel title="请假类型分布">
-			<LeaveTypeBarChart slices={leaveTypeSlices} onSelect={handleLeaveTypeSelect} />
-		</Panel>
-		<Panel title="申请状态分布">
-			{#key dateKey}
-				<StatusDistributionChart
-					slices={statusSlices}
-					variant="donut"
-					onSelect={handleStatusSelect}
+<!-- 「全部类型」是跨类型汇总视图：状态分布/趋势等图表按单类型语义统计会失真
+     （不同申请类型的字段与口径不同），故此时隐藏图表区，只保留概览卡片与明细表 -->
+{#if type !== 'all'}
+	<div class="grid">
+		{#if isLeave}
+			<Panel title="请假类型分布">
+				<LeaveTypeBarChart slices={leaveTypeSlices} onSelect={handleLeaveTypeSelect} />
+			</Panel>
+			<Panel title="申请状态分布">
+				{#key dateKey}
+					<StatusDistributionChart
+						slices={statusSlices}
+						variant="donut"
+						onSelect={handleStatusSelect}
+					/>
+				{/key}
+			</Panel>
+			<Panel title="近 12 个月请假天数趋势">
+				<ApplicationTrendChart
+					points={trend}
+					name={trendName}
+					unit={trendUnit}
+					onSelect={handleMonthSelect}
 				/>
-			{/key}
-		</Panel>
-		<Panel title="近 12 个月请假天数趋势">
-			<ApplicationTrendChart
-				points={trend}
-				name={trendName}
-				unit={trendUnit}
-				onSelect={handleMonthSelect}
-			/>
-		</Panel>
-	{:else}
-		<Panel title="申请状态分布">
-			<StatusDistributionChart slices={statusSlices} variant="pie" onSelect={handleStatusSelect} />
-		</Panel>
-		<Panel title="近 12 个月申请量趋势">
-			<ApplicationTrendChart
-				points={trend}
-				name={trendName}
-				unit={trendUnit}
-				onSelect={handleMonthSelect}
-			/>
-		</Panel>
-	{/if}
-</div>
+			</Panel>
+		{:else}
+			<Panel title="申请状态分布">
+				<StatusDistributionChart slices={statusSlices} variant="pie" onSelect={handleStatusSelect} />
+			</Panel>
+			<Panel title="近 12 个月申请量趋势">
+				<ApplicationTrendChart
+					points={trend}
+					name={trendName}
+					unit={trendUnit}
+					onSelect={handleMonthSelect}
+				/>
+			</Panel>
+		{/if}
+	</div>
+{/if}
 
 <Panel title="申请记录" actions={header}>
 	<ApplicationTable requests={sortedRequests} {type} resetKey={filterKey} />

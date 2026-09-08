@@ -13,12 +13,14 @@
 		filterByStatus,
 		filterByType,
 		getRequestsByApplicant,
+		loadRequests,
 		requestsStore,
 		searchRequests,
 		sortBySubmittedAtDesc,
-		type StatusFilter
+		USE_BACKEND
 	} from '$lib/data/requests';
-	import { type ApplicationType } from '$lib/domain/types';
+	import { fetchUserRequests } from '$lib/data/users';
+	import { type ApplicationType, type StatusFilter } from '$lib/domain/types';
 	import { firstStep } from '$lib/domain/wizard';
 
 	const identity = useIdentity();
@@ -66,6 +68,30 @@
 	const mine = $derived(
 		sortBySubmittedAtDesc(getRequestsByApplicant(identity.user.id, $requestsStore))
 	);
+
+	// 联调：后端态下「我的申请」改用 `GET /users/:id/requests`（联调端点 #3）按当前用户取数，
+	// 不再走跨类型的 `scope=mine`；该端点只返回当前用户的全部申请，status/year/month/
+	// keyword/type 等维度由下方本地 filterBy* 层叠加过滤（与本地态行为一致）。
+	// 若 /users/:id/requests 未实现或报错，兜底回 `GET /requests?scope=mine`（原行为，
+	// 服务端按 token 解析当前用户并支持各筛选维度），UI 表现不变。
+	$effect(() => {
+		if (!USE_BACKEND) return;
+		const id = identity.user.id;
+		void (async () => {
+			try {
+				requestsStore.set(await fetchUserRequests(id));
+			} catch {
+				await loadRequests(typeFilter === 'all' ? undefined : typeFilter, {
+					status: activeFilter,
+					year,
+					month,
+					keyword: keyword.trim() || undefined,
+					scope: 'mine',
+					sort: 'submitted'
+				});
+			}
+		})();
+	});
 	const years = $derived(distinctYears(mine));
 	// 维度正交：状态 → 类型 → 年/月 → 关键字，叠加生效
 	const visible = $derived(

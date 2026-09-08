@@ -1,6 +1,7 @@
 import { getContext, setContext } from 'svelte';
-import { IDENTITY_BY_ROLE, requireUser } from '$lib/domain/org';
+import { IDENTITY_BY_ROLE, requireUser, loadUserInfo } from '$lib/domain/org';
 import type { Role, User } from '$lib/domain/types';
+import { apiGet, USE_BACKEND } from '$lib/core/http';
 
 /**
  * 当前登录身份。
@@ -15,6 +16,7 @@ import type { Role, User } from '$lib/domain/types';
  */
 
 const STORAGE_KEY = 'identity-role';
+const USER_INFO_KEY = 'user-info';
 const VALID_ROLES: Set<string> = new Set(['employee', 'manager', 'finance']);
 
 function loadRole(): Role {
@@ -36,7 +38,13 @@ export class IdentityState {
 	/** 当前角色对应的登录人 */
 	get user(): User {
 		// console.log('user getter called', this.role);
-		return requireUser(IDENTITY_BY_ROLE[this.role]);
+		try {
+			const userInfo = loadUserInfo()
+			return userInfo || requireUser(IDENTITY_BY_ROLE[this.role]);
+		} catch {
+			return requireUser(IDENTITY_BY_ROLE[this.role]);
+		}
+		
 	}
 
 	get isManager(): boolean {
@@ -48,9 +56,38 @@ export class IdentityState {
 		return this.role === 'finance';
 	}
 
+	saveUserInfo(info: User): void {
+		// console.log('saveUserInfo', info);
+		localStorage.setItem(USER_INFO_KEY, JSON.stringify(info));
+	}
+
 	switchTo(role: Role): void {
 		this.role = role;
 		saveRole(role);
+	}
+
+	/**
+	 * 联调：GET /aws/v1/users/me 拉取当前登录人，覆盖本地演示身份。
+	 *
+	 * 与 `requests.ts` 的集成函数同构——后端就绪即生效，失败静默回退：
+	 * 后端尚未实现 Controller 时，`apiGet` 抛错被吞掉，沿用本地
+	 * `user-info` / 角色演示身份，页面照常可用。
+	 *
+	 * @returns 拉取到的当前用户；未联调或拉取失败时返回 `undefined`
+	 */
+	async loadCurrentUser(): Promise<User | undefined> {
+		if (!USE_BACKEND) return undefined;
+		try {
+			const me = await apiGet<User>('/users/me');
+			if (me?.id) {
+				this.saveUserInfo(me);
+				this.switchTo(me.role);
+				return me;
+			}
+		} catch {
+			// 后端未实现 /users/me：静默回退，不阻断登录与主流程
+		}
+		return undefined;
 	}
 }
 

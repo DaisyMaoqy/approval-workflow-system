@@ -5,8 +5,8 @@
 	import ApprovalCard from './components/ApprovalCard.svelte';
 	import RejectDialog from '$lib/components/RejectDialog.svelte';
 	import { useIdentity } from '$lib/state/identity.svelte';
-	import { requestsStore, updateRequest, sortBySubmittedAtDesc } from '$lib/data/requests';
-	import { canViewRequest, transition } from '$lib/domain/workflow';
+	import { requestsStore, sortBySubmittedAtDesc, applyAction, batchAction, loadRequests, USE_BACKEND } from '$lib/data/requests';
+	import { canViewRequest } from '$lib/domain/workflow';
 	import type { RequestStatus } from '$lib/domain/types';
 	import type { Request } from '$lib/domain/types';
 
@@ -36,6 +36,15 @@
 	const approvalResetKey = $derived(identity.role);
 	const allIds = $derived(todo.map((r) => r.id));
 
+	// 联调：待办由后端按 token 解析的 `scope=todo` 过滤（manager→pending_manager、
+	// finance→pending_finance），无需前端再算 myPendingStatus。切换审批身份（role）时
+	// 重新拉取；后端不可用 / 报错时 loadRequests 降级，下面 `todo` 的本地过滤仍兜底。
+	$effect(() => {
+		if (!USE_BACKEND) return;
+		identity.role; // 注册依赖：角色变化即重新拉待办
+		void loadRequests(undefined, { scope: 'todo' });
+	});
+
 	// 批量选择：以 id 数组为唯一真相，卡片只回传切换事件，由这里维护集合
 	let selected = $state<string[]>([]);
 	const selectedCount = $derived(selected.length);
@@ -52,48 +61,62 @@
 	}
 
 	// 通过/驳回只描述意图，具体落到 pending_finance 还是 approved 由状态机决定。
-	// 主管通过停在待财务审批，财务通过才归档，见 workflow.ts 的 TRANSITIONS。
-	function approve(request: Request): void {
-		const res = transition({ request, action: 'approve', actor: identity.user });
-		if (res.ok) {
-			updateRequest(res.request);
+	// 联调入口 applyAction 在 USE_BACKEND 时调后端 RPC，否则降级本地状态机；
+	// 服务端返回值会回写本地 store。见 requests.ts 的 applyAction 注释。
+	async function approve(request: Request): Promise<void> {
+		try {
+			await applyAction(request, 'approve', identity.user);
 			selected = selected.filter((id) => id !== request.id);
+		} catch {
+			// 流转失败静默：列表项保留，待用户重试
 		}
-	}
-	function batchApprove(): void {
-		// 每张都按最新引用再流转，避免 store 更新后的 stale 引用
-		for (const id of selected) {
-			const found = $requestsStore.find((r) => r.id === id);
-			if (found) approve(found);
-		}
-		selected = [];
 	}
 
-	// 驳回需填意见：意见与校验由 RejectDialog，这里只拿到最终 comment 去流转
+	// 批量通过：一次请求打到 POST /aws/v1/requests/batch，由后端逐条流转。
+	// 成功后 batchAction 内部已用服务端数据刷新 store（含其它类型），这里只需清空选择。
+	async function batchApprove(): Promise<void> {
+		const ids = [...selected];
+		selected = [];
+		try {
+			await batchAction('approve', ids, identity.user);
+		} catch {
+			// 失败静默：列表项保留，待用户重试
+		}
+	}
+
+	// 驳回需填意见：意见与校验由 RejectDialog，这里只拿到最终 comment 去流转。
+	// 单条与批量共用同一个弹窗：rejectTarget 非空为单条，rejectBatch 为真为批量。
 	let rejectTarget = $state<Request | null>(null);
+	let rejectBatch = $state(false);
 	let rejectError = $state<string | null>(null);
 
 	function openReject(request: Request): void {
 		rejectTarget = request;
+		rejectBatch = false;
+		rejectError = null;
+	}
+	function openBatchReject(): void {
+		rejectTarget = null;
+		rejectBatch = true;
 		rejectError = null;
 	}
 	function closeReject(): void {
 		rejectTarget = null;
+		rejectBatch = false;
 		rejectError = null;
 	}
-	function confirmReject(comment: string): void {
-		if (!rejectTarget) return;
-		const res = transition({
-			request: rejectTarget,
-			action: 'reject',
-			actor: identity.user,
-			comment
-		});
-		if (res.ok) {
-			updateRequest(res.request);
+	async function confirmReject(comment: string): Promise<void> {
+		try {
+			if (rejectBatch) {
+				const ids = [...selected];
+				selected = [];
+				await batchAction('reject', ids, identity.user, comment);
+			} else if (rejectTarget) {
+				await applyAction(rejectTarget, 'reject', identity.user, comment);
+			}
 			closeReject();
-		} else {
-			rejectError = res.message;
+		} catch (err) {
+			rejectError = err instanceof Error ? err.message : '驳回失败';
 		}
 	}
 </script>
@@ -118,6 +141,14 @@
 				onclick={batchApprove}
 			>
 				批量通过
+			</button>
+			<button
+				type="button"
+				class="btn btn--danger"
+				disabled={selectedCount === 0}
+				onclick={openBatchReject}
+			>
+				批量驳回
 			</button>
 		</div>
 
@@ -145,7 +176,7 @@
 	{/if}
 
 	<RejectDialog
-		open={rejectTarget !== null}
+		open={rejectTarget !== null || rejectBatch}
 		error={rejectError}
 		onclose={closeReject}
 		onconfirm={confirmReject}
@@ -175,44 +206,3 @@
 		</div>
 	</div>
 {/if}
-
-<style>
-	.toolbar {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-	}
-	.toolbar__check {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		font-size: 0.875rem;
-		color: var(--color-slate-600);
-		cursor: pointer;
-	}
-	.toolbar__check input {
-		width: 1rem;
-		height: 1rem;
-		cursor: pointer;
-		accent-color: var(--color-brand-600);
-	}
-	.toolbar__count {
-		font-size: 0.875rem;
-		color: var(--color-slate-500);
-	}
-	.toolbar__spacer {
-		flex: 1;
-	}
-	.approval-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	.notice-card__actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.75rem;
-	}
-</style>

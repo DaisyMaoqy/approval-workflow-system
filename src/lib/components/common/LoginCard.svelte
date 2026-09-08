@@ -1,5 +1,7 @@
 <script lang="ts">
-	// —— 登录卡片组件：可整体放进任意 SvelteKit 项目 ——
+	// —— 登录卡片组件（深色玻璃拟态整页）——
+	// 样式集中定义于 src/lib/styles/components.css 的 .login-page / .login-card 块，
+	// 按「页面级样式语义化」约定收口，令牌（brand / brand-2 / ink）见 tokens.css。
 	interface Credentials {
 		username: string;
 		password: string;
@@ -36,7 +38,7 @@
 	async function handleLogin(event: SubmitEvent) {
 		event.preventDefault();
 		error = '';
-		
+
 		if (!canSubmit) {
 			error = '请输入账号和密码';
 			return;
@@ -57,43 +59,43 @@
 	}
 </script>
 
-<div class="relative min-h-screen overflow-hidden bg-ink text-white">
+<div class="login-page">
 	<!-- 背景霓虹光晕（紫 / 青） -->
-	<div class="pointer-events-none absolute -top-32 -right-24 h-96 w-96 rounded-full bg-brand/40 blur-[120px]"></div>
-	<div class="pointer-events-none absolute -bottom-40 -left-20 h-[30rem] w-[30rem] rounded-full bg-brand-2/30 blur-[130px]"></div>
+	<div class="login-page__glow login-page__glow--brand"></div>
+	<div class="login-page__glow login-page__glow--brand-2"></div>
 
-	<div class="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
-		<div class="w-full max-w-md">
+	<div class="login-page__stage">
+		<div class="login-page__card-wrap">
 			<!-- 登录卡片（玻璃拟态） -->
-			<div class="rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
+			<div class="login-card">
 				<!-- 品牌区 -->
-				<div class="mb-8 flex flex-col items-center text-center">
-					<div class="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-xl font-bold tracking-wide">
-						OA
-					</div>
-					<h1 class="text-xl font-semibold">{title}</h1>
-					<p class="mt-1 text-sm text-white/50">{subtitle}</p>
+				<div class="login-card__brand">
+					<div class="login-card__logo">OA</div>
+					<h1 class="login-card__title">{title}</h1>
+					<p class="login-card__subtitle">{subtitle}</p>
 				</div>
 
-				<form onsubmit={handleLogin} class="space-y-5">
+				<form onsubmit={handleLogin} class="login-form">
 					{#if error}
-						<div class="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-							{error}
-						</div>
+						<div class="login-alert">{error}</div>
 					{/if}
 
 					<!-- 账号 -->
-					<div>
-						<label for="username" class="mb-1.5 block text-sm text-white/70">账号</label>
-						<div class="relative">
+					<div class="login-field">
+						<label for="username" class="login-field__label">账号</label>
+						<div class="login-field__control">
 							<svg
-								class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30"
+								class="login-field__icon"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
 								stroke-width="1.8"
 							>
-								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke-linecap="round" stroke-linejoin="round" />
+								<path
+									d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 								<circle cx="12" cy="7" r="4" />
 							</svg>
 							<input
@@ -102,17 +104,17 @@
 								bind:value={username}
 								placeholder="请输入账号 / 手机号"
 								autocomplete="username"
-								class="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-white placeholder-white/30 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/40"
+								class="login-input login-input--brand"
 							/>
 						</div>
 					</div>
 
 					<!-- 密码 -->
-					<div>
-						<label for="password" class="mb-1.5 block text-sm text-white/70">密码</label>
-						<div class="relative">
+					<div class="login-field">
+						<label for="password" class="login-field__label">密码</label>
+						<div class="login-field__control">
 							<svg
-								class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30"
+								class="login-field__icon"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
@@ -127,23 +129,42 @@
 								bind:value={password}
 								placeholder="请输入密码"
 								autocomplete="current-password"
-								class="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-10 pr-10 text-white placeholder-white/30 outline-none transition focus:border-brand-2 focus:ring-2 focus:ring-brand-2/40"
+								class="login-input login-input--brand-2 login-input--toggle"
 							/>
 							<button
 								type="button"
 								onclick={() => (showPassword = !showPassword)}
 								aria-label={showPassword ? '隐藏密码' : '显示密码'}
-								class="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 transition hover:text-white/70"
+								class="login-field__toggle"
 							>
 								{#if showPassword}
-									<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-										<path d="M2 12s3.5-7 10-7 10 7 10 7a13 13 0 0 1-2 2.5M6.5 6.5A13 13 0 0 1 12 5c6.5 0 10 7 10 7a13 13 0 0 1-2 2.5" stroke-linecap="round" />
+									<svg
+										class="h-5 w-5"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.8"
+									>
+										<path
+											d="M2 12s3.5-7 10-7 10 7 10 7a13 13 0 0 1-2 2.5M6.5 6.5A13 13 0 0 1 12 5c6.5 0 10 7 10 7a13 13 0 0 1-2 2.5"
+											stroke-linecap="round"
+										/>
 										<path d="M9.5 9.5a3.5 3.5 0 0 0 5 5" stroke-linecap="round" />
 										<line x1="3" y1="3" x2="21" y2="21" stroke-linecap="round" />
 									</svg>
 								{:else}
-									<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-										<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke-linecap="round" stroke-linejoin="round" />
+									<svg
+										class="h-5 w-5"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.8"
+									>
+										<path
+											d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
 										<circle cx="12" cy="12" r="3" />
 									</svg>
 								{/if}
@@ -152,22 +173,18 @@
 					</div>
 
 					<!-- 记住我 / 忘记密码 -->
-					<div class="flex items-center justify-between text-sm">
-						<label class="flex cursor-pointer items-center gap-2 text-white/70">
-							<input type="checkbox" bind:checked={remember} class="h-4 w-4 rounded border-white/20 bg-white/5 accent-brand" />
+					<div class="login-options">
+						<label class="login-remember">
+							<input type="checkbox" bind:checked={remember} class="login-checkbox" />
 							记住我
 						</label>
 						<!-- <a href="/forgot" sclass="text-brand-2 transition hover:underline">忘记密码？</a> -->
 					</div>
 
 					<!-- 登录按钮 -->
-					<button
-						type="submit"
-						disabled={loading}
-						class="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand to-brand-2 py-2.5 font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-					>
+					<button type="submit" disabled={loading} class="login-submit">
 						{#if loading}
-							<span class="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+							<span class="login-spinner"></span>
 							登录中…
 						{:else}
 							登 录
@@ -175,7 +192,7 @@
 					</button>
 				</form>
 
-				<p class="mt-6 text-center text-xs text-white/40">© 2026 公司名称. 保留所有权利.</p>
+				<p class="login-copyright">© 2026 公司名称. 保留所有权利.</p>
 			</div>
 		</div>
 	</div>

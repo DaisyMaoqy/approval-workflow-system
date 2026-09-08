@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EMPLOYEE_ID, FINANCE_ID, MANAGER_ID, requireUser, USERS } from '../../domain/org';
-import type { AuditAction, RequestStatus, TravelFields, TravelRequest } from '../../domain/types';
+import type { AuditAction, RequestStatus, TravelFields, TravelRequest, UserId } from '../../domain/types';
 import {
 	actionRequiresComment,
 	availableActions,
@@ -10,7 +10,7 @@ import {
 	REJECT_COMMENT_MAX_LENGTH,
 	transition
 } from '../../domain/workflow';
-import { toLocalISO } from '../../format/date';
+import { toChinaISO } from '../../format/date';
 
 const zhangsan = requireUser(EMPLOYEE_ID);
 const lijingli = requireUser(MANAGER_ID);
@@ -355,7 +355,7 @@ describe('transition — 留痕与不可变性', () => {
 		expect(result.ok && result.request.audit).toEqual([
 			{
 				id: 'audit-fixed',
-				at: toLocalISO(NOW),
+				at: toChinaISO(NOW),
 				actorId: zhangsan.id,
 				actorName: zhangsan.name,
 				action: 'submit',
@@ -381,7 +381,7 @@ describe('transition — 留痕与不可变性', () => {
 			now: NOW
 		});
 
-		expect(result.ok && result.request.submittedAt).toBe(toLocalISO(NOW));
+		expect(result.ok && result.request.submittedAt).toBe(toChinaISO(NOW));
 	});
 
 	it('驳回后重新提交以最新提交时间为准', () => {
@@ -393,7 +393,7 @@ describe('transition — 留痕与不可变性', () => {
 			now: NOW
 		});
 
-		expect(result.ok && result.request.submittedAt).toBe(toLocalISO(NOW));
+		expect(result.ok && result.request.submittedAt).toBe(toChinaISO(NOW));
 	});
 });
 
@@ -485,6 +485,23 @@ describe('canViewRequest', () => {
 		expect(
 			canViewRequest(makeRequest({ applicantId: EMPLOYEE_ID, status: 'approved' }), wangcaiwu)
 		).toBe(false);
+	});
+
+	it('联调模式：申请人是后端 UUID（本地组织表查不到），主管凭 applicantRole 仍可查看', () => {
+		const backendReq = makeRequest({
+			applicantId: 'cd15271d-6d0d-4b23-b769-6daafcfc091e' as UserId,
+			applicantRole: 'employee',
+			status: 'pending_manager'
+		});
+		expect(canViewRequest(backendReq, lijingli)).toBe(true);
+	});
+
+	it('联调模式：缺 applicantRole 且申请人非本地用户时，主管无法查看（回归保护）', () => {
+		const backendReq = makeRequest({
+			applicantId: 'cd15271d-6d0d-4b23-b769-6daafcfc091e' as UserId,
+			status: 'pending_manager'
+		});
+		expect(canViewRequest(backendReq, lijingli)).toBe(false);
 	});
 });
 

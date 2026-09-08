@@ -5,7 +5,13 @@ import seed from '$lib/data/seed.json' with { type: 'json' };
 
 // loadRequests 是全仓唯一的异步/网络逻辑，此前零测试。这里 mock 掉 `fetch` 与
 // `PUBLIC_MOCK_BASE_URL`，把三条降级路径（成功 / !res.ok / 网络错误 / 无 base）逐一覆盖。
-vi.mock('$env/static/public', () => ({ PUBLIC_MOCK_BASE_URL: 'https://mock.test' }));
+// 注意：USE_BACKEND 由 PUBLIC_USE_BACKEND 驱动，这里固定为 'true' 以保留原「联调态」
+// 的信封拆包行为（mock 的响应是 {code,msg,data} 信封），聚焦验证 loadRequests 的
+// 拉取 / 降级 / 并入 store 逻辑本身。
+vi.mock('$env/static/public', () => ({
+	PUBLIC_MOCK_BASE_URL: 'https://mock.test',
+	PUBLIC_USE_BACKEND: 'true'
+}));
 
 const SEED = seed as unknown as Request[];
 
@@ -65,7 +71,10 @@ afterEach(() => {
 describe('loadRequests', () => {
 	it('云端成功：写入工作数据集并按更新时间倒序', async () => {
 		const data = remoteData();
-		vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => data } as Response);
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ code: '200', msg: 'ok', data })
+		} as Response);
 
 		await loadRequests();
 
@@ -121,12 +130,15 @@ describe('loadRequests', () => {
 		]);
 
 		const data = remoteData(); // 两条 travel
-		vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => data } as Response);
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ code: '200', msg: 'ok', data })
+		} as Response);
 
 		await loadRequests('travel');
 
 		// URL 带 ?type=travel
-		const calledUrl = vi.mocked(fetch).mock.calls[0][0] as URL;
+		const calledUrl = new URL(vi.mocked(fetch).mock.calls[0][0] as string, 'http://localhost');
 		expect(calledUrl.searchParams.get('type')).toBe('travel');
 
 		const list = getAllRequests();
@@ -139,11 +151,14 @@ describe('loadRequests', () => {
 		requestsStore.set([{ id: 'STALE' } as unknown as Request]);
 
 		const data = remoteData();
-		vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => data } as Response);
+		vi.mocked(fetch).mockResolvedValue({
+			ok: true,
+			json: async () => ({ code: '200', msg: 'ok', data })
+		} as Response);
 
 		await loadRequests();
 
-		const calledUrl = vi.mocked(fetch).mock.calls[0][0] as URL;
+		const calledUrl = new URL(vi.mocked(fetch).mock.calls[0][0] as string, 'http://localhost');
 		expect(calledUrl.search).toBe('');
 		expect(getAllRequests().find((r) => r.id === 'STALE')).toBeUndefined();
 		expect(getAllRequests()).toHaveLength(2);

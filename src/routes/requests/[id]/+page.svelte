@@ -3,8 +3,9 @@
 	import { page } from '$app/state';
 	import RequestDetail from './components/RequestDetail.svelte';
 	import { useIdentity } from '$lib/state/identity.svelte';
-	import { requestsStore } from '$lib/data/requests';
+	import { requestsStore, loadRequestById } from '$lib/data/requests';
 	import { canViewRequest } from '$lib/domain/workflow';
+	import { USE_BACKEND } from '$lib/core/http';
 
 	const identity = useIdentity();
 	const id = $derived(page.params.id);
@@ -15,6 +16,15 @@
 	const request = $derived($requestsStore.find((r) => r.id === id));
 	// 查看权限：自己的单或待我审批的单才可看；随身份切换响应式变化（员工看不到领导的单）
 	const canView = $derived(request ? canViewRequest(request, identity.user) : false);
+
+	// 联调模式：store 里没有这张单（深链直访 / 列表未含此单）时，按 id 向后端拉取。
+	// 命中后写回 store 会使上面的推导重新计算、request 出现，effect 随即不再触发；
+	// 两个资源都拉不到（不存在 / 后端未起）则保持「未找到」分支，不阻塞页面。
+	$effect(() => {
+		if (USE_BACKEND && !request && id) {
+			void loadRequestById(id).catch(() => {});
+		}
+	});
 </script>
 
 {#if !request}

@@ -5,10 +5,9 @@
 		ACTION_LABELS,
 		actionRequiresComment,
 		availableActions,
-		isDeletable,
-		transition
+		isDeletable
 	} from '$lib/domain/workflow';
-	import { deleteRequest, updateRequest } from '$lib/data/requests';
+	import { applyAction, removeRequest } from '$lib/data/requests';
 	import { setActiveEditId, stepHref } from '$lib/domain/wizard';
 	import { loadDraftForEdit } from '$lib/state/wizardDraft';
 	import Modal from '$lib/components/common/Modal.svelte';
@@ -49,25 +48,26 @@
 	let showReject = $state(false);
 	let showDelete = $state(false);
 
-	/** 执行一次流转并落库；需要意见的动作（驳回）由调用方传入 comment */
-	function runAction(action: AuditAction, comment?: string): void {
+	/**
+	 * 执行一次流转并回写本地 store（联调入口，取代直接调 workflow.transition）。
+	 * USE_BACKEND 时调后端 POST /<type>-requests/:id/<action>，否则降级本地状态机。
+	 * 需要意见的动作（驳回）由调用方传入 comment。
+	 */
+	async function runAction(action: AuditAction, comment?: string): Promise<void> {
 		feedback = null;
-		const result = transition({
-			request,
-			action,
-			actor,
-			comment: actionRequiresComment(action) ? comment : undefined
-		});
-
-		if (!result.ok) {
-			feedback = result.message;
-			return;
+		try {
+			await applyAction(
+				request,
+				action,
+				actor,
+				actionRequiresComment(action) ? comment : undefined
+			);
+			showReject = false;
+			// 草稿详情页「提交申请」提交后直接回到「我的申请」，由页面层决定去向
+			if (action === 'submit') onsubmitted?.();
+		} catch (err) {
+			feedback = err instanceof Error ? err.message : '操作失败';
 		}
-
-		updateRequest(result.request);
-		showReject = false;
-		// 草稿详情页「提交申请」提交后直接回到「我的申请」，由页面层决定去向
-		if (action === 'submit') onsubmitted?.();
 	}
 
 	function openReject(): void {
@@ -75,31 +75,31 @@
 		showReject = true;
 	}
 
-	// 删除是破坏性操作，且不属于状态流转，故不经过 transition，直接移除数据；
-	// 权限已由 isDeletable 把关，这里只负责执行与后续跳转。
-	function onDeleteConfirm(): void {
-		deleteRequest(request.id);
+	// 删除是破坏性操作，且不属于状态流转，故不经过 applyAction，直接移除数据；
+	// 联调时调后端 DELETE /<type>-requests/:id，本地 store 始终同步移除。
+	async function onDeleteConfirm(): Promise<void> {
+		await removeRequest(request.id);
 		showDelete = false;
 		ondeleted?.();
 	}
 
 	// 重新编辑：把数据回填进向导草稿并带上 ?edit=ID 跳转到发起页 —— 复用同一套排版，
 	// 只是字段都有值可改。
-	// - 草稿：本身就是可编辑态，直接回填即可，无需走状态机（不追加审计）。
-	// - 被驳回：先走状态机把 rejected → draft（记一条「重新编辑」审计）再回填。
-	function onReedit(): void {
+	// - 草稿：本身就是可编辑态，直接回填即可，不走状态机（不追加审计）。
+	// - 被驳回：先走 applyAction 把 rejected → draft（联调时调后端 reedit RPC，
+	//   记一条「重新编辑」审计）再回填。
+	async function onReedit(): Promise<void> {
 		if (request.status !== 'draft') {
-			const result = transition({ request, action: 'reedit', actor });
-			if (!result.ok) {
-				feedback = result.message;
-				return;
+			try {
+				const updated = await applyAction(request, 'reedit', actor);
+				setActiveEditId(updated.id);
+				loadDraftForEdit(updated);
+				// 目标地址由 stepHref() 内部 resolve() 生成，ESLint 无法跨模块追踪，故豁免
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				goto(stepHref(request.type, 'basic', updated.id));
+			} catch (err) {
+				feedback = err instanceof Error ? err.message : '重新编辑失败';
 			}
-			updateRequest(result.request);
-			setActiveEditId(result.request.id);
-			loadDraftForEdit(result.request);
-			// 目标地址由 stepHref() 内部 resolve() 生成，ESLint 无法跨模块追踪，故豁免
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			goto(stepHref(request.type, 'basic', result.request.id));
 			return;
 		}
 

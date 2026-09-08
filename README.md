@@ -149,13 +149,19 @@ localStorage 草稿回读时，结构变更或被手动改动的脏数据会被�
 - **`src/lib/core/http.ts` —— 全局请求基础设施**：负责请求拦截（按 `USE_BACKEND`
   拼接 Mock `/api` 或后端 `/aws/v1` base、附加 `Content-Type` 与
   `Authorization: Bearer <Qy_token>`）、响应拦截（联调模式拆统一信封
-  `{ code, data, message }` 仅返回 `data`）、以及统一的错误处理（抛 `ApiError`，
-  区分网络 / 超时 / HTTP / 业务码，401 自动清 token 并跳登录）。业务模块不重复拼
-  URL、拼头、解析信封。暴露 `apiGet / apiPost / apiPut / apiPatch / apiDelete` 与
-  联调总开关 `USE_BACKEND`。
+  `{ code, data, msg }` 仅返回 `data`，成功 `code:"200"`、否则抛 `ApiError` 取 `msg`）、
+  以及统一的错误处理（抛 `ApiError`，区分网络 / 超时 / HTTP / 业务码，401 自动清 token
+  并跳登录）。业务模块不重复拼 URL、拼头、解析信封。暴露
+  `apiGet / apiPost / apiPut / apiPatch / apiDelete` 与联调总开关 `USE_BACKEND`。
 - **`src/lib/data/requests.ts` —— 领域数据仓**：只关心申请单的读取、筛选、本地回退
   与 store；通过 `apiGet('/requests')` 消费 `core/http` 的返回值（兼容「数组」与
-  「分页包 `{ list, total, page, pageSize }``），自身不再直接 `fetch`。
+  「分页包 `{ list, total, page, pageSize }``），自身不再直接 `fetch`。写操作由一组
+  **异步集成函数**承接（`submitNewRequest` / `saveDraftRequest` / `resubmitRequest` /
+  `removeRequest` / `applyAction`）：`USE_BACKEND` 为真时调后端
+  `/aws/v1/<type>-requests` 及其 RPC 子路径（submit/approve/reject/cancel/reedit），
+  用返回值回写本地 store；后端不可用或抛错时降级到同名的「本地兜底」同步函数
+  （`createRequest` / `createDraft` / `updateRequestFromDraft` / `deleteRequest`，
+  保留仅用于单测溯源），保证页面始终可用。
 - **`src/lib/state/auth.svelte.ts` —— 登录态**：持有后端签发的 `Qy_token` 并持久化到
   `localStorage`；`core/http` 从中读取 token 组装鉴权头，二者通过同一个 key 解耦。
 

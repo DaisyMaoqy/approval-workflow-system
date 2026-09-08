@@ -66,7 +66,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<ManagerDashboard requests={visibleRequests} type={selectedType} />
+	<ManagerDashboard requests={visibleRequests} type={selectedType} department={identity.user.department} />
 {:else}
 	<!-- 统计报表是领导（主管）专属视图，其余身份无权查看 -->
 	<div class="notice-card">
@@ -85,20 +85,3 @@
 		</div>
 	</div>
 {/if}
-
-<style>
-	.reports__type-select {
-		height: 2.25rem;
-		padding: 0 0.5rem;
-		border: 1px solid var(--color-slate-300);
-		border-radius: var(--radius-md);
-		background: var(--color-white);
-		font-size: 0.875rem;
-	}
-	.notice-card__actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.75rem;
-	}
-</style>

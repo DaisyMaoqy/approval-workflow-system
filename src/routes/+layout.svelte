@@ -26,18 +26,21 @@
 	});
 
 	// 在根部提供一次，整棵树通过 useIdentity() 读取
-	provideIdentity();
+	const identity = provideIdentity();
 	// 申请类型（差旅/请假…）同样在根部提供，整棵树通过 useApplicationType() 读取；
 	// 持久化到 localStorage，只有侧栏「切换申请类型」下拉会改它，导航点击不改
 	provideApplicationType();
 	// 登录态（Qy_token）：整棵树通过 useAuth() 读取，供后续请求携带鉴权头
-	provideAuth();
+	const auth = provideAuth();
 
 	// 登录页使用独立布局，不渲染侧栏 / 角色切换
 	const isLogin = $derived(page.url.pathname === '/login');
 
-	// 浏览器端启动拉取 Apifox Mock 数据（3s 超时，失败回退缓存 / seed）
-	onMount(loadRequests);
+	// 浏览器端启动：拉取 Mock 数据；已登录则刷新当前登录人（GET /aws/v1/users/me）
+	onMount(() => {
+		void loadRequests();
+		if (auth.isAuthenticated) void identity.loadCurrentUser().catch(() => {});
+	});
 </script>
 
 <svelte:head>

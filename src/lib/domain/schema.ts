@@ -195,7 +195,8 @@ export function toFieldErrors(error: z.ZodError): FieldErrors {
 	for (const issue of error.issues) {
 		const key = issue.path.join('.') || '_';
 		// 同一字段只保留第一条，避免 UI 上堆叠多行提示
-		result[key] ??= issue.message;
+		// result[key] ??= issue.message;		
+		result[key] ??= issue.code === 'invalid_type' ? '请填写该字段' : issue.message;
 	}
 
 	return result;
