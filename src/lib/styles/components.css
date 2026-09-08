@@ -400,7 +400,7 @@
 
 	/* ===== 统计报表类型选择（src/routes/reports/+page.svelte） ===== */
 	.reports__type-select {
-		@apply h-9 rounded-md border border-slate-300 bg-white px-2 text-sm;
+		@apply h-9 rounded-md border border-slate-300 bg-white px-2 text-sm pr-7;
 	}
 	/* 注：.notice-card__actions 已在 NoticeCard 块统一定义，此处不再重复 */
 }

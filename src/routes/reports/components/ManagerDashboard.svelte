@@ -30,8 +30,14 @@
 	let {
 		requests,
 		/** 看板当前类型筛选；'leave' 时图表与卡片切换为请假语义指标 */
-		type = 'all'
-	}: { requests: readonly Request[]; type?: ApplicationType | 'all' } = $props();
+		type = 'all',
+		/** 当前主管所属部门：后端聚合按部门口径，须与本地 deptRequests 的部门过滤一致 */
+		department = ''
+	}: {
+		requests: readonly Request[];
+		type?: ApplicationType | 'all';
+		department?: string;
+	} = $props();
 
 	// 当前是否为请假视图：驱动图表/卡片/表头的差异化渲染
 	const isLeave = $derived(type === 'leave');
@@ -67,7 +73,10 @@
 			return;
 		}
 		const currentType = type;
-		void loadDashboard({ type: currentType })
+		// 必须带上部门维度：后端 /reports/dashboard 按 department 聚合团队数据，
+		// 与本地 deptRequests 的部门过滤（含排除本人/草稿）口径一致，否则图表/卡片
+		// 会显示全部门数据，与下方「本部门申请记录」明细表对不上。
+		void loadDashboard({ type: currentType, department })
 			.then((d) => {
 				if (useBackend) backendData = d;
 			})
@@ -225,42 +234,46 @@
 	<StatCard label="通过率" value={`${(overview.passRate * 100).toFixed(1)}%`} />
 </div>
 
-<div class="grid">
-	{#if isLeave}
-		<Panel title="请假类型分布">
-			<LeaveTypeBarChart slices={leaveTypeSlices} onSelect={handleLeaveTypeSelect} />
-		</Panel>
-		<Panel title="申请状态分布">
-			{#key dateKey}
-				<StatusDistributionChart
-					slices={statusSlices}
-					variant="donut"
-					onSelect={handleStatusSelect}
+<!-- 「全部类型」是跨类型汇总视图：状态分布/趋势等图表按单类型语义统计会失真
+     （不同申请类型的字段与口径不同），故此时隐藏图表区，只保留概览卡片与明细表 -->
+{#if type !== 'all'}
+	<div class="grid">
+		{#if isLeave}
+			<Panel title="请假类型分布">
+				<LeaveTypeBarChart slices={leaveTypeSlices} onSelect={handleLeaveTypeSelect} />
+			</Panel>
+			<Panel title="申请状态分布">
+				{#key dateKey}
+					<StatusDistributionChart
+						slices={statusSlices}
+						variant="donut"
+						onSelect={handleStatusSelect}
+					/>
+				{/key}
+			</Panel>
+			<Panel title="近 12 个月请假天数趋势">
+				<ApplicationTrendChart
+					points={trend}
+					name={trendName}
+					unit={trendUnit}
+					onSelect={handleMonthSelect}
 				/>
-			{/key}
-		</Panel>
-		<Panel title="近 12 个月请假天数趋势">
-			<ApplicationTrendChart
-				points={trend}
-				name={trendName}
-				unit={trendUnit}
-				onSelect={handleMonthSelect}
-			/>
-		</Panel>
-	{:else}
-		<Panel title="申请状态分布">
-			<StatusDistributionChart slices={statusSlices} variant="pie" onSelect={handleStatusSelect} />
-		</Panel>
-		<Panel title="近 12 个月申请量趋势">
-			<ApplicationTrendChart
-				points={trend}
-				name={trendName}
-				unit={trendUnit}
-				onSelect={handleMonthSelect}
-			/>
-		</Panel>
-	{/if}
-</div>
+			</Panel>
+		{:else}
+			<Panel title="申请状态分布">
+				<StatusDistributionChart slices={statusSlices} variant="pie" onSelect={handleStatusSelect} />
+			</Panel>
+			<Panel title="近 12 个月申请量趋势">
+				<ApplicationTrendChart
+					points={trend}
+					name={trendName}
+					unit={trendUnit}
+					onSelect={handleMonthSelect}
+				/>
+			</Panel>
+		{/if}
+	</div>
+{/if}
 
 <Panel title="申请记录" actions={header}>
 	<ApplicationTable requests={sortedRequests} {type} resetKey={filterKey} />

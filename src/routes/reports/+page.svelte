@@ -66,7 +66,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<ManagerDashboard requests={visibleRequests} type={selectedType} />
+	<ManagerDashboard requests={visibleRequests} type={selectedType} department={identity.user.department} />
 {:else}
 	<!-- 统计报表是领导（主管）专属视图，其余身份无权查看 -->
 	<div class="notice-card">

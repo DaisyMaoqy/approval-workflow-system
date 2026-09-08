@@ -79,3 +79,63 @@ describe('ManagerDashboard 图表形态与交互', () => {
 		expect(clickCalls.length).toBeGreaterThanOrEqual(3);
 	});
 });
+
+/**
+ * 「全部类型」是跨类型汇总视图，图表按单类型语义统计会失真，
+ * 因此隐藏整个图表区，只保留概览卡片与明细表（日期筛选器保持不动）。
+ *
+ * 断言统一按每次 render 自己的 container 查询，避免跨用例的 DOM 残留互相干扰。
+ */
+describe('全部类型：隐藏图表区', () => {
+	beforeEach(() => {
+		setOptionSpy.mockClear();
+		onSpy.mockClear();
+	});
+
+	it('不渲染图表容器，也不初始化任何 echarts 实例', async () => {
+		const { container } = render(ManagerDashboard, { props: { requests, type: 'all' as const } });
+		await tick();
+		await new Promise((r) => setTimeout(r, 90));
+
+		// .grid 是图表区唯一的类名（Panel 用 panel__*），故可直接判定
+		expect(container.querySelector('.grid')).toBeNull();
+		expect(setOptionSpy).not.toHaveBeenCalled();
+		expect(onSpy).not.toHaveBeenCalled();
+	});
+
+	it('四张图表的面板标题全部消失', async () => {
+		const { container } = render(ManagerDashboard, { props: { requests, type: 'all' as const } });
+		await tick();
+		await new Promise((r) => setTimeout(r, 90));
+
+		expect(container.textContent).not.toContain('申请状态分布');
+		expect(container.textContent).not.toContain('近 12 个月申请量趋势');
+		expect(container.textContent).not.toContain('请假类型分布');
+		expect(container.textContent).not.toContain('近 12 个月请假天数趋势');
+	});
+
+	it('概览卡片与申请记录表仍照常渲染', async () => {
+		const { container } = render(ManagerDashboard, { props: { requests, type: 'all' as const } });
+		await tick();
+		await new Promise((r) => setTimeout(r, 90));
+
+		expect(container.textContent).toContain('申请总数');
+		expect(container.textContent).toContain('待处理');
+		expect(container.textContent).toContain('通过率');
+		expect(container.textContent).toContain('申请记录');
+		// 请假视图专属卡片不应出现（全部类型不是请假视图）
+		expect(container.textContent).not.toContain('请假总天数');
+	});
+
+	it('对照组：切到具体类型后图表区恢复显示', async () => {
+		const { container } = render(ManagerDashboard, {
+			props: { requests, type: 'travel' as const }
+		});
+		await tick();
+		await new Promise((r) => setTimeout(r, 90));
+
+		expect(container.querySelector('.grid')).not.toBeNull();
+		expect(container.textContent).toContain('申请状态分布');
+		expect(setOptionSpy).toHaveBeenCalled();
+	});
+});
