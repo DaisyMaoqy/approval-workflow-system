@@ -17,7 +17,7 @@ import { budgetTotal, formatYuan } from '$lib/domain/money';
 import { transition, actionRequiresComment } from '$lib/domain/workflow';
 import type { TripLeg } from '$lib/domain/types';
 import { writable, get } from 'svelte/store';
-import { toLocalISO } from '$lib/format/date';
+import { toChinaISO } from '$lib/format/date';
 import { apiGet, apiPost, apiPut, apiDelete, USE_BACKEND } from '$lib/core/http';
 export { USE_BACKEND };
 
@@ -293,7 +293,8 @@ export function searchRequests(requests: readonly Request[], keyword: string): R
  * 按申请创建时间的年/月过滤。
  *
  * 两个维度独立：年份或月份为 `'all'` 表示该维度不限制。
- * 用 UTC 解析，与 seed 生成（Date.UTC）保持一致，避免时区导致跨月错位。
+ * 时间戳字面量即中国时间（`+08:00`，后端统一输出），直接按字面量截取年月，
+ * 与 seed / 后端 / 图表分月口径完全一致，不做时区换算。
  */
 export function filterByDate(
 	requests: readonly Request[],
@@ -301,17 +302,17 @@ export function filterByDate(
 	month: number | 'all'
 ): Request[] {
 	return requests.filter((r) => {
-		const d = new Date(r.createdAt);
-		if (year !== 'all' && d.getUTCFullYear() !== year) return false;
-		if (month !== 'all' && d.getUTCMonth() + 1 !== month) return false;
+		const ym = r.createdAt.slice(0, 7);
+		if (year !== 'all' && Number(ym.slice(0, 4)) !== year) return false;
+		if (month !== 'all' && Number(ym.slice(5, 7)) !== month) return false;
 		return true;
 	});
 }
 
-/** 数据里出现过的年份（倒序），用于年份下拉框的可选项 */
+/** 数据里出现过的年份（倒序），用于年份下拉框的可选项（按中国时区字面量） */
 export function distinctYears(requests: readonly Request[]): number[] {
 	const years = new Set<number>();
-	for (const r of requests) years.add(new Date(r.createdAt).getUTCFullYear());
+	for (const r of requests) years.add(Number(r.createdAt.slice(0, 4)));
 	return [...years].sort((a, b) => b - a);
 }
 
@@ -385,7 +386,7 @@ function buildBase(
 	fields: Record<string, unknown>,
 	applicant: User
 ): Request {
-	const now = toLocalISO();
+	const now = toChinaISO();
 	return {
 		id: nextRequestId(type),
 		type,
@@ -455,7 +456,8 @@ export function updateRequestFromDraft(
 ): Request {
 	const existing = getRequestById(id);
 	if (!existing) throw new Error('申请不存在');
-	const now = new Date().toISOString();
+	// 统一按中国时区（+08:00）写入，与 toChinaISO / 后端输出口径一致
+	const now = toChinaISO();
 	const updated: Request = {
 		...existing,
 		type,
