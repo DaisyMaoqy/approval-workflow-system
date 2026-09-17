@@ -188,15 +188,45 @@ export type TravelFormInput = z.infer<typeof travelFormSchema>;
  */
 export type FieldErrors = Record<string, string>;
 
+/** 中文标点、全角符号、常用标点区 */
+const CHINESE_PUNCT = /[\u3000-\u303F\uFF00-\uFFEF\u2000-\u206F]/u;
+
+/**
+ * 文案是否含中文：汉字，或仅由中文标点构成（如「（必填）」这类无汉字的提示）。
+ *
+ * 用 `\p{Script=Han}` 而非 `[一-龥]`，覆盖更全（含扩展区罕见字）。
+ */
+function hasChinese(text: string): boolean {
+	return /\p{Script=Han}/u.test(text) || CHINESE_PUNCT.test(text);
+}
+
+/**
+ * 判断一条错误消息是不是 Zod 生成的默认文案。
+ *
+ * Zod 默认文案是英文（形如 `Invalid input: expected string, received undefined`），
+ * 而本项目所有自定义文案都是中文，据此即可区分「该字段没配文案」与「已配文案」。
+ *
+ * 之所以需要区分：`invalid_type` 不只表示「没填」，也涵盖 `.int()` 之类的格式约束
+ * （如金额填了小数 → expected 为 `int`，自带「金额精确到分」）。若一律替换成必填提示，
+ * 会把这些已有文案覆盖掉。
+ */
+function isZodDefaultMessage(message: string): boolean {
+	return !hasChinese(message);
+}
+
 /** 把 ZodError 拍平成字段路径 → 首条错误消息 */
 export function toFieldErrors(error: z.ZodError): FieldErrors {
 	const result: FieldErrors = {};
 
 	for (const issue of error.issues) {
 		const key = issue.path.join('.') || '_';
-		// 同一字段只保留第一条，避免 UI 上堆叠多行提示
-		// result[key] ??= issue.message;		
-		result[key] ??= issue.code === 'invalid_type' ? '请填写该字段' : issue.message;
+		// 同一字段只保留第一条，避免 UI 上堆叠多行提示。
+		// 只有「类型错误且字段本身没配文案」时才补一句友好的必填提示，
+		// 避免覆盖「金额精确到分」「请输入金额」等已有中文文案。
+		result[key] ??=
+			issue.code === 'invalid_type' && isZodDefaultMessage(issue.message)
+				? '请填写该字段'
+				: issue.message;
 	}
 
 	return result;
