@@ -193,6 +193,22 @@ describe('budgetSchema', () => {
 		expect(result).toMatchObject({ ok: false, errors: { 'budget.transport': '金额精确到分' } });
 	});
 
+	// 回归：必填兜底曾一律替换 invalid_type，把「金额精确到分」「请输入金额」等
+	// 已有文案覆盖成「请填写该字段」。下面两条分别锁定「保留已有文案」与「补兜底」。
+	it('必填兜底不覆盖已有的自定义文案（金额未填仍提示「请输入金额」）', () => {
+		const result = validate(budgetSchema, {
+			budget: { hotel: 240000, allowance: 0, other: 0 }
+		});
+
+		expect(result).toMatchObject({ ok: false, errors: { 'budget.transport': '请输入金额' } });
+	});
+
+	it('未配文案的必填字段：把 Zod 英文默认换成中文「请填写该字段」', () => {
+		const result = validate(basicSchema, { urgency: 'normal' });
+
+		expect(result).toMatchObject({ ok: false, errors: { reason: '请填写该字段' } });
+	});
+
 	it('超过 10000 元且未填说明时报错', () => {
 		const result = validate(budgetSchema, {
 			budget: { transport: 600000, hotel: 500000, allowance: 0, other: 0 }
